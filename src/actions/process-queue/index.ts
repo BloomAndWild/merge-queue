@@ -10,6 +10,7 @@ import { PRValidator } from '../../core/pr-validator';
 import { BranchUpdater } from '../../core/branch-updater';
 import { createLogger } from '../../utils/logger';
 import { COMMENT_TEMPLATES } from '../../utils/constants';
+import type { ProcessingStep } from '../../utils/constants';
 import { parseRepository, getConfig } from '../../utils/action-helpers';
 import type {
   RepositoryInfo,
@@ -31,6 +32,8 @@ async function processPR(
 ): Promise<MergeResult> {
   const startTime = Date.now();
   let result: MergeResult = 'failed';
+  const steps: ProcessingStep[] = [];
+  let summaryTitle = 'Removed from Queue';
 
   try {
     logger.info('Processing PR', { prNumber });
@@ -47,9 +50,6 @@ async function processPR(
     await api.addLabels(prNumber, [config.processingLabel]);
     await api.removeLabel(prNumber, config.queuedLabel);
 
-    // Add comment
-    await api.addComment(prNumber, COMMENT_TEMPLATES.processing());
-
     // Validate PR
     logger.info('Validating PR', { prNumber });
     const validation = await validator.validate(prNumber);
@@ -60,22 +60,22 @@ async function processPR(
         reason: validation.reason,
       });
 
+      steps.push({
+        label: 'Validation failed — checks no longer passing',
+        status: 'failure',
+        detail: validation.reason || 'Unknown reason',
+      });
+
       // Add failed label
       await api.addLabels(prNumber, [config.failedLabel]);
       await api.removeLabel(prNumber, config.processingLabel);
       await api.removeLabel(prNumber, config.queueLabel);
 
-      // Add comment
-      await api.addComment(
-        prNumber,
-        COMMENT_TEMPLATES.removedChecksFailure(
-          validation.reason || 'Unknown reason'
-        )
-      );
-
       result = 'failed';
       return result;
     }
+
+    steps.push({ label: 'Validation passed', status: 'success' });
 
     // Check if branch needs updating
     if (
@@ -93,7 +93,6 @@ async function processPR(
 
       // Add updating label
       await api.addLabels(prNumber, [config.updatingLabel]);
-      await api.addComment(prNumber, COMMENT_TEMPLATES.updatingBranch());
 
       // Update the branch
       const updateResult = await updater.updateIfBehind(prNumber);
@@ -104,14 +103,19 @@ async function processPR(
       if (updateResult.conflict) {
         logger.warning('Merge conflict detected', { prNumber });
 
+        steps.push({
+          label: 'Branch update failed — merge conflict detected',
+          status: 'failure',
+          detail:
+            'Please resolve conflicts and add the ready label again to re-queue.',
+        });
+
         // Add conflict label
         await api.addLabels(prNumber, [config.conflictLabel]);
         await api.removeLabel(prNumber, config.processingLabel);
         await api.removeLabel(prNumber, config.queueLabel);
 
-        // Add comment
-        await api.addComment(prNumber, COMMENT_TEMPLATES.removedConflict());
-
+        summaryTitle = 'Merge Conflict';
         result = 'conflict';
         return result;
       }
@@ -122,25 +126,29 @@ async function processPR(
           error: updateResult.error,
         });
 
+        steps.push({
+          label: 'Tests failed after branch update',
+          status: 'failure',
+          detail: updateResult.error || 'Unknown error',
+        });
+
         // Add failed label
         await api.addLabels(prNumber, [config.failedLabel]);
         await api.removeLabel(prNumber, config.processingLabel);
         await api.removeLabel(prNumber, config.queueLabel);
-
-        // Add comment
-        await api.addComment(
-          prNumber,
-          COMMENT_TEMPLATES.removedTestsFailedAfterUpdate(
-            updateResult.error || 'Unknown error'
-          )
-        );
 
         result = 'failed';
         return result;
       }
 
       logger.info('Branch updated and tests passed', { prNumber });
-      await api.addComment(prNumber, COMMENT_TEMPLATES.testsPassedMerging());
+      steps.push({
+        label: 'Branch updated with latest master',
+        status: 'success',
+      });
+      steps.push({ label: 'Tests passed after update', status: 'success' });
+    } else {
+      steps.push({ label: 'Branch already up to date', status: 'success' });
     }
 
     // Merge the PR
@@ -168,14 +176,22 @@ async function processPR(
     await api.removeLabel(prNumber, config.processingLabel);
     await api.removeLabel(prNumber, config.queueLabel);
 
-    // Add success comment
-    await api.addComment(prNumber, COMMENT_TEMPLATES.mergedSuccessfully());
-
+    steps.push({ label: 'Merged successfully', status: 'success' });
+    summaryTitle = 'Merged Successfully';
     result = 'merged';
     return result;
   } catch (error) {
     logger.error('Error processing PR', error as Error, { prNumber });
     result = 'failed';
+
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    steps.push({
+      label: 'Error occurred',
+      status: 'failure',
+      detail: errorMessage,
+    });
+    summaryTitle = 'Error';
 
     try {
       // Attempt cleanup on error — wrapped so cleanup failures don't mask
@@ -183,13 +199,6 @@ async function processPR(
       await api.addLabels(prNumber, [config.failedLabel]);
       await api.removeLabel(prNumber, config.processingLabel);
       await api.removeLabel(prNumber, config.queueLabel);
-
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      await api.addComment(
-        prNumber,
-        COMMENT_TEMPLATES.removedError(errorMessage)
-      );
     } catch (cleanupError) {
       logger.error('Failed to clean up after error', cleanupError as Error, {
         prNumber,
@@ -198,6 +207,20 @@ async function processPR(
 
     return result;
   } finally {
+    // Post a single summary comment with all processing steps
+    try {
+      await api.addComment(
+        prNumber,
+        COMMENT_TEMPLATES.buildSummary(summaryTitle, steps)
+      );
+    } catch (commentError) {
+      logger.error(
+        'Failed to post summary comment',
+        commentError as Error,
+        { prNumber }
+      );
+    }
+
     // Record in history — wrapped so history errors don't mask earlier ones
     try {
       const duration = Math.round((Date.now() - startTime) / 1000);

@@ -47,20 +47,25 @@ export declare const TIMEOUTS: {
     apiTimeoutMs: number;
 };
 /**
+ * A single step recorded during queue processing, used to build summary comments
+ */
+export interface ProcessingStep {
+    label: string;
+    status: 'success' | 'failure';
+    detail?: string;
+}
+/**
  * Comment templates for PR communication
  */
 export declare const COMMENT_TEMPLATES: {
     addedToQueue: (position: number) => string;
-    processing: () => string;
-    updatingBranch: () => string;
-    waitingForTests: () => string;
-    testsPassedMerging: () => string;
-    mergedSuccessfully: () => string;
     removedChecksFailure: (details: string) => string;
-    removedTestsFailedAfterUpdate: (details: string) => string;
-    removedConflict: () => string;
-    removedError: (error: string) => string;
     positionUpdate: (position: number) => string;
+    /**
+     * Build a single summary comment from the collected processing steps.
+     * Posted once at the end of process-queue instead of multiple comments.
+     */
+    buildSummary: (title: string, steps: ProcessingStep[]) => string;
 };
 /**
  * Label colors for queue-related labels (GitHub hex format)

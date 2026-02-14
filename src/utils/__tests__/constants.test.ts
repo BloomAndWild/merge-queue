@@ -60,14 +60,40 @@ describe('Constants', () => {
   describe('COMMENT_TEMPLATES', () => {
     it('should have template functions', () => {
       expect(typeof COMMENT_TEMPLATES.addedToQueue).toBe('function');
-      expect(typeof COMMENT_TEMPLATES.processing).toBe('function');
-      expect(typeof COMMENT_TEMPLATES.mergedSuccessfully).toBe('function');
+      expect(typeof COMMENT_TEMPLATES.buildSummary).toBe('function');
     });
 
-    it('should generate correct messages', () => {
+    it('should generate correct addedToQueue message', () => {
       expect(COMMENT_TEMPLATES.addedToQueue(3)).toContain('position 3');
-      expect(COMMENT_TEMPLATES.processing()).toContain('Processing');
-      expect(COMMENT_TEMPLATES.mergedSuccessfully()).toContain('Merged');
+    });
+
+    it('should build a summary with success steps', () => {
+      const summary = COMMENT_TEMPLATES.buildSummary('Merged Successfully', [
+        { label: 'Validation passed', status: 'success' },
+        { label: 'Branch updated with latest master', status: 'success' },
+        { label: 'Tests passed after update', status: 'success' },
+        { label: 'Merged successfully', status: 'success' },
+      ]);
+
+      expect(summary).toContain('Merged Successfully');
+      expect(summary).toContain('✅ Validation passed');
+      expect(summary).toContain('✅ Merged successfully');
+    });
+
+    it('should build a summary with failure steps and details', () => {
+      const summary = COMMENT_TEMPLATES.buildSummary('Removed from Queue', [
+        { label: 'Validation passed', status: 'success' },
+        {
+          label: 'Tests failed after branch update',
+          status: 'failure',
+          detail: 'CI check "build" failed',
+        },
+      ]);
+
+      expect(summary).toContain('Removed from Queue');
+      expect(summary).toContain('✅ Validation passed');
+      expect(summary).toContain('❌ Tests failed after branch update');
+      expect(summary).toContain('CI check "build" failed');
     });
   });
 

@@ -32448,16 +32448,23 @@ const TIMEOUTS = {
  */
 const COMMENT_TEMPLATES = {
     addedToQueue: (position) => `✅ Added to merge queue at position ${position}`,
-    processing: () => `🔄 Processing merge...`,
-    updatingBranch: () => `🔄 Updating branch with latest master...`,
-    waitingForTests: () => `⏳ Waiting for tests to complete after branch update...`,
-    testsPassedMerging: () => `✅ Tests passed, merging now...`,
-    mergedSuccessfully: () => `✅ Merged successfully`,
     removedChecksFailure: (details) => `❌ Removed from queue: checks no longer passing\n\n${details}`,
-    removedTestsFailedAfterUpdate: (details) => `❌ Removed from queue: tests failed after branch update\n\n${details}`,
-    removedConflict: () => `❌ Removed from queue: merge conflict detected during update\n\nPlease resolve conflicts and add the ready label again to re-queue.`,
-    removedError: (error) => `❌ Removed from queue: error occurred\n\n\`\`\`\n${error}\n\`\`\``,
     positionUpdate: (position) => `📍 Queue position: ${position}`,
+    /**
+     * Build a single summary comment from the collected processing steps.
+     * Posted once at the end of process-queue instead of multiple comments.
+     */
+    buildSummary: (title, steps) => {
+        const lines = [`## 🔀 Merge Queue — ${title}`, ''];
+        for (const step of steps) {
+            const icon = step.status === 'success' ? '✅' : '❌';
+            lines.push(`- ${icon} ${step.label}`);
+            if (step.detail) {
+                lines.push(`  > ${step.detail.split('\n').join('\n  > ')}`);
+            }
+        }
+        return lines.join('\n');
+    },
 };
 /**
  * Label colors for queue-related labels (GitHub hex format)

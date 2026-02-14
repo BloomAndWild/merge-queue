@@ -53,41 +53,44 @@ export const TIMEOUTS = {
 };
 
 /**
+ * A single step recorded during queue processing, used to build summary comments
+ */
+export interface ProcessingStep {
+  label: string;
+  status: 'success' | 'failure';
+  detail?: string;
+}
+
+/**
  * Comment templates for PR communication
  */
 export const COMMENT_TEMPLATES = {
   addedToQueue: (position: number) =>
     `✅ Added to merge queue at position ${position}`,
 
-  processing: () =>
-    `🔄 Processing merge...`,
-
-  updatingBranch: () =>
-    `🔄 Updating branch with latest master...`,
-
-  waitingForTests: () =>
-    `⏳ Waiting for tests to complete after branch update...`,
-
-  testsPassedMerging: () =>
-    `✅ Tests passed, merging now...`,
-
-  mergedSuccessfully: () =>
-    `✅ Merged successfully`,
-
   removedChecksFailure: (details: string) =>
     `❌ Removed from queue: checks no longer passing\n\n${details}`,
 
-  removedTestsFailedAfterUpdate: (details: string) =>
-    `❌ Removed from queue: tests failed after branch update\n\n${details}`,
-
-  removedConflict: () =>
-    `❌ Removed from queue: merge conflict detected during update\n\nPlease resolve conflicts and add the ready label again to re-queue.`,
-
-  removedError: (error: string) =>
-    `❌ Removed from queue: error occurred\n\n\`\`\`\n${error}\n\`\`\``,
-
   positionUpdate: (position: number) =>
     `📍 Queue position: ${position}`,
+
+  /**
+   * Build a single summary comment from the collected processing steps.
+   * Posted once at the end of process-queue instead of multiple comments.
+   */
+  buildSummary: (title: string, steps: ProcessingStep[]) => {
+    const lines: string[] = [`## 🔀 Merge Queue — ${title}`, ''];
+
+    for (const step of steps) {
+      const icon = step.status === 'success' ? '✅' : '❌';
+      lines.push(`- ${icon} ${step.label}`);
+      if (step.detail) {
+        lines.push(`  > ${step.detail.split('\n').join('\n  > ')}`);
+      }
+    }
+
+    return lines.join('\n');
+  },
 };
 
 /**
