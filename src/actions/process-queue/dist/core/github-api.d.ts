@@ -27,13 +27,27 @@ export declare class GitHubAPI {
      */
     getCommitStatus(ref: string): Promise<CheckStatus[]>;
     /**
-     * Check if PR branch is behind base branch
+     * Check if PR branch is behind base branch.
+     *
+     * Compares base_ref (e.g. main) → head_ref (PR branch).
+     * `behind_by` then tells us how many commits the PR branch
+     * is missing from the base branch.
      */
     isBranchBehind(prNumber: number): Promise<boolean>;
     /**
-     * Update PR branch with base branch (merge base into head)
+     * Update PR branch with base branch using GitHub's dedicated update-branch API.
+     *
+     * Uses `PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch`
+     * which is the same mechanism as the "Update branch" button in the GitHub UI.
+     * This endpoint returns HTTP 202 (Accepted) because the merge happens
+     * asynchronously, so we poll the PR for the new head SHA afterwards.
      */
     updateBranch(prNumber: number): Promise<UpdateResult>;
+    /**
+     * Poll the PR until its head SHA changes, confirming the async branch
+     * update has completed.  Returns the new SHA.
+     */
+    private waitForBranchUpdate;
     /**
      * Merge a pull request
      */

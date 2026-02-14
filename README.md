@@ -123,16 +123,50 @@ npm test
 npm run lint
 ```
 
-## Publishing
+## Making Changes & Releasing
 
-This repository should be published to GitHub and tagged for versioning:
+Target repositories reference the actions by **git tag** (e.g. `@v1`), and GitHub
+Actions runs the **bundled `dist/` files**, not the TypeScript source. This means
+every source change must be built, committed, and re-tagged before consumers pick
+it up.
+
+### Step-by-step workflow
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+# 1. Make your source changes in /src
+#    e.g. edit src/core/github-api.ts
+
+# 2. Build — compiles TypeScript and bundles each action with ncc
+npm run build
+
+# 3. Commit both source and dist changes
+git add -A
+git commit -m "Description of your change"
+
+# 4. Move the floating major-version tag so consumers get the update
+git tag -fa v1 -m "Release v1 — <short description>"
+git push origin main --follow-tags
+git push origin v1 --force
+
+# For a new minor/patch release, also create a fixed tag:
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-Target repositories will reference actions like:
+### Why the dist files must be committed
+
+Each action's `action.yml` declares `runs.using: node20` with `main: dist/index.js`.
+GitHub downloads the repository at the referenced tag and runs that file directly —
+there is no build step at runtime. If the dist files are stale, consumers run old code.
+
+### Tag conventions
+
+| Tag | Purpose | Mutable? |
+|---------|---------------------------------------------|----------|
+| `v1` | Floating tag consumers reference (`@v1`) | Yes |
+| `v1.x.y`| Fixed release for auditability | No |
+
+Target repositories reference actions like:
 
 ```yaml
 uses: your-org/merge-queue@v1/src/actions/add-to-queue

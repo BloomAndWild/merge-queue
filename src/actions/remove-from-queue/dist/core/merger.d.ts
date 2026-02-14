@@ -15,6 +15,10 @@ export interface MergeResultDetails {
 }
 /**
  * PR Merger class
+ *
+ * Provides a standalone merge-with-validation flow.
+ * For more complex orchestration (label management, state tracking),
+ * the process-queue action drives the merge directly via GitHubAPI.
  */
 export declare class PRMerger {
     private api;
@@ -30,9 +34,5 @@ export declare class PRMerger {
      * Post-merge cleanup
      */
     cleanup(prNumber: number, branchName: string | null, labels: string[]): Promise<void>;
-    /**
-     * Verify a merge was successful by checking commit existence
-     */
-    verifyMerge(sha: string): Promise<boolean>;
 }
 //# sourceMappingURL=merger.d.ts.map

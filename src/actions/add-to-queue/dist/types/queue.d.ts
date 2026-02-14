@@ -4,7 +4,7 @@
 /**
  * Status of the currently processing PR
  */
-export type ProcessingStatus = 'validating' | 'updating_branch' | 'waiting_for_tests' | 'merging' | null;
+export type ProcessingStatus = 'validating' | 'updating_branch' | 'waiting_for_tests' | 'merging';
 /**
  * Result of a completed PR merge attempt
  */

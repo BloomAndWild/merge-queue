@@ -31839,7 +31839,7 @@ var __webpack_exports__ = {};
 "use strict";
 
 // EXTERNAL MODULE: ../../../node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(7930);
+var lib_core = __nccwpck_require__(7930);
 // EXTERNAL MODULE: ../../../node_modules/@actions/github/lib/github.js
 var github = __nccwpck_require__(6834);
 ;// CONCATENATED MODULE: ../../utils/errors.ts
@@ -31918,6 +31918,16 @@ class ConcurrencyError extends StateError {
         this.name = 'ConcurrencyError';
     }
 }
+/**
+ * Type guard for errors returned by the GitHub/Octokit API.
+ * These errors carry a numeric `status` property (HTTP status code).
+ */
+function isGitHubError(error) {
+    return (typeof error === 'object' &&
+        error !== null &&
+        'status' in error &&
+        typeof error.status === 'number');
+}
 
 ;// CONCATENATED MODULE: ../../utils/logger.ts
 /**
@@ -31953,21 +31963,21 @@ class Logger {
      */
     debug(message, context) {
         this.log(LogLevel.DEBUG, message, context);
-        core.debug(this.formatMessage(message, context));
+        lib_core.debug(this.formatMessage(message, context));
     }
     /**
      * Log an info message
      */
     info(message, context) {
         this.log(LogLevel.INFO, message, context);
-        core.info(this.formatMessage(message, context));
+        lib_core.info(this.formatMessage(message, context));
     }
     /**
      * Log a warning message
      */
     warning(message, context) {
         this.log(LogLevel.WARNING, message, context);
-        core.warning(this.formatMessage(message, context));
+        lib_core.warning(this.formatMessage(message, context));
     }
     /**
      * Log an error message
@@ -31984,7 +31994,7 @@ class Logger {
             }
             : context;
         this.log(LogLevel.ERROR, message, errorContext);
-        core.error(this.formatMessage(message, errorContext));
+        lib_core.error(this.formatMessage(message, errorContext));
     }
     /**
      * Format a log message with context
@@ -31996,7 +32006,7 @@ class Logger {
         }
         const contextStr = Object.entries(allContext)
             .map(([key, value]) => {
-            const valueStr = typeof value === 'object'
+            const valueStr = typeof value === 'object' && value !== null
                 ? JSON.stringify(value)
                 : String(value);
             return `${key}=${valueStr}`;
@@ -32015,13 +32025,13 @@ class Logger {
      * Start a log group
      */
     startGroup(name) {
-        core.startGroup(name);
+        lib_core.startGroup(name);
     }
     /**
      * End a log group
      */
     endGroup() {
-        core.endGroup();
+        lib_core.endGroup();
     }
 }
 /**
@@ -32038,6 +32048,38 @@ function createLogger(context) {
 
 
 
+/**
+ * Map a GitHub check-run conclusion + status to our CheckStatus type
+ */
+function mapCheckRunStatus(conclusion, status) {
+    if (conclusion) {
+        const map = {
+            success: 'success',
+            failure: 'failure',
+            cancelled: 'cancelled',
+            neutral: 'neutral',
+            skipped: 'skipped',
+            timed_out: 'failure',
+            action_required: 'failure',
+            stale: 'pending',
+        };
+        return map[conclusion] ?? 'pending';
+    }
+    // No conclusion yet — derive from the run status
+    return status === 'completed' ? 'success' : 'pending';
+}
+/**
+ * Map a GitHub commit-status state to our CheckStatus type
+ */
+function mapCommitStatusState(state) {
+    const map = {
+        success: 'success',
+        failure: 'failure',
+        error: 'failure',
+        pending: 'pending',
+    };
+    return map[state] ?? 'pending';
+}
 /**
  * GitHub API client for merge queue operations
  */
@@ -32064,7 +32106,7 @@ class GitHubAPI {
             return data;
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to fetch PR #${prNumber}`, error.status, error);
+            throw new GitHubAPIError(`Failed to fetch PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
@@ -32081,7 +32123,7 @@ class GitHubAPI {
             return data;
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to fetch reviews for PR #${prNumber}`, error.status, error);
+            throw new GitHubAPIError(`Failed to fetch reviews for PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
@@ -32102,27 +32144,31 @@ class GitHubAPI {
                 repo: this.repo.repo,
                 ref,
             });
-            // Combine check runs and statuses
+            // Combine check runs and statuses with proper status mapping
             const checkStatuses = [
                 ...checkRuns.check_runs.map(check => ({
                     name: check.name,
-                    status: (check.conclusion || check.status),
+                    status: mapCheckRunStatus(check.conclusion, check.status),
                     conclusion: check.conclusion || undefined,
                 })),
                 ...statuses.statuses.map(status => ({
                     name: status.context,
-                    status: status.state,
+                    status: mapCommitStatusState(status.state),
                     conclusion: status.state,
                 })),
             ];
             return checkStatuses;
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to fetch commit status for ${ref}`, error.status, error);
+            throw new GitHubAPIError(`Failed to fetch commit status for ${ref}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
-     * Check if PR branch is behind base branch
+     * Check if PR branch is behind base branch.
+     *
+     * Compares base_ref (e.g. main) → head_ref (PR branch).
+     * `behind_by` then tells us how many commits the PR branch
+     * is missing from the base branch.
      */
     async isBranchBehind(prNumber) {
         this.logger.debug('Checking if branch is behind', { prNumber });
@@ -32131,48 +32177,65 @@ class GitHubAPI {
             const comparison = await this.octokit.rest.repos.compareCommitsWithBasehead({
                 owner: this.repo.owner,
                 repo: this.repo.repo,
-                basehead: `${pr.head.sha}...${pr.base.sha}`,
+                basehead: `${pr.base.ref}...${pr.head.ref}`,
             });
-            // If behind_by > 0, the PR branch is behind the base branch
+            // behind_by = commits in base that are NOT in head (PR is behind)
             return comparison.data.behind_by > 0;
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to check if PR #${prNumber} is behind`, error.status, error);
+            throw new GitHubAPIError(`Failed to check if PR #${prNumber} is behind`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
-     * Update PR branch with base branch (merge base into head)
+     * Update PR branch with base branch using GitHub's dedicated update-branch API.
+     *
+     * Uses `PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch`
+     * which is the same mechanism as the "Update branch" button in the GitHub UI.
+     * This endpoint returns HTTP 202 (Accepted) because the merge happens
+     * asynchronously, so we poll the PR for the new head SHA afterwards.
      */
     async updateBranch(prNumber) {
         this.logger.info('Updating PR branch with base', { prNumber });
         try {
             const pr = await this.getPullRequest(prNumber);
-            // Merge base branch into PR branch
-            const { data: merge } = await this.octokit.rest.repos.merge({
+            const previousSha = pr.head.sha;
+            this.logger.debug('Current head SHA before update', {
+                prNumber,
+                sha: previousSha,
+                base: pr.base.ref,
+                head: pr.head.ref,
+            });
+            // Use GitHub's dedicated PR branch update API (same as "Update branch" button)
+            await this.octokit.rest.pulls.updateBranch({
                 owner: this.repo.owner,
                 repo: this.repo.repo,
-                base: pr.head.ref,
-                head: pr.base.ref,
-                commit_message: `Merge ${pr.base.ref} into ${pr.head.ref} (merge queue auto-update)`,
+                pull_number: prNumber,
+                expected_head_sha: previousSha,
             });
-            if (!merge.sha) {
-                throw new Error('Merge did not return a commit SHA');
-            }
+            // The API returns 202 Accepted — the merge happens asynchronously.
+            // Poll until the head SHA changes to confirm the update completed.
+            const newSha = await this.waitForBranchUpdate(prNumber, previousSha);
             this.logger.info('Branch updated successfully', {
                 prNumber,
-                sha: merge.sha,
+                previousSha,
+                sha: newSha,
             });
             return {
                 success: true,
                 conflict: false,
-                sha: merge.sha,
+                sha: newSha,
             };
         }
         catch (error) {
-            // Check if it's a merge conflict
-            if (error.status === 409 || error.message?.includes('conflict')) {
+            const statusCode = isGitHubError(error) ? error.status : undefined;
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            // 409 or message containing "conflict" → merge conflict
+            if (isGitHubError(error) &&
+                (error.status === 409 || error.message?.includes('conflict'))) {
                 this.logger.warning('Merge conflict detected during branch update', {
                     prNumber,
+                    statusCode,
+                    errorMessage,
                 });
                 return {
                     success: false,
@@ -32180,8 +32243,52 @@ class GitHubAPI {
                     error: 'Merge conflict detected',
                 };
             }
-            throw new GitHubAPIError(`Failed to update branch for PR #${prNumber}`, error.status, error);
+            // 422 Validation Failed — often indicates a merge conflict or
+            // that the branch cannot be updated (e.g. head SHA mismatch)
+            if (isGitHubError(error) && error.status === 422) {
+                this.logger.warning('Branch update validation failed', {
+                    prNumber,
+                    statusCode,
+                    errorMessage,
+                });
+                return {
+                    success: false,
+                    conflict: errorMessage.toLowerCase().includes('conflict'),
+                    error: `Branch update validation failed: ${errorMessage}`,
+                };
+            }
+            // Any other error — log full details for easier debugging
+            this.logger.error('Branch update failed', error, {
+                prNumber,
+                statusCode,
+                errorMessage,
+            });
+            throw new GitHubAPIError(`Failed to update branch for PR #${prNumber} (HTTP ${statusCode ?? 'unknown'}): ${errorMessage}`, statusCode, error);
         }
+    }
+    /**
+     * Poll the PR until its head SHA changes, confirming the async branch
+     * update has completed.  Returns the new SHA.
+     */
+    async waitForBranchUpdate(prNumber, previousSha, maxAttempts = 10, intervalMs = 3000) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+            const pr = await this.getPullRequest(prNumber);
+            if (pr.head.sha !== previousSha) {
+                return pr.head.sha;
+            }
+            this.logger.debug('Waiting for branch update to complete', {
+                prNumber,
+                attempt,
+                maxAttempts,
+            });
+        }
+        // Final check
+        const pr = await this.getPullRequest(prNumber);
+        if (pr.head.sha !== previousSha) {
+            return pr.head.sha;
+        }
+        throw new Error(`Branch update did not complete within ${(maxAttempts * intervalMs) / 1000}s for PR #${prNumber}`);
     }
     /**
      * Merge a pull request
@@ -32207,7 +32314,7 @@ class GitHubAPI {
             return data.sha;
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to merge PR #${prNumber}`, error.status, error);
+            throw new GitHubAPIError(`Failed to merge PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
@@ -32242,7 +32349,7 @@ class GitHubAPI {
             });
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to add comment to PR #${prNumber}`, error.status, error);
+            throw new GitHubAPIError(`Failed to add comment to PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
@@ -32261,7 +32368,7 @@ class GitHubAPI {
             });
         }
         catch (error) {
-            throw new GitHubAPIError(`Failed to add labels to PR #${prNumber}`, error.status, error);
+            throw new GitHubAPIError(`Failed to add labels to PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
     /**
@@ -32279,9 +32386,10 @@ class GitHubAPI {
         }
         catch (error) {
             // Ignore 404 errors (label doesn't exist)
-            if (error.status !== 404) {
-                throw new GitHubAPIError(`Failed to remove label from PR #${prNumber}`, error.status, error);
+            if (isGitHubError(error) && error.status === 404) {
+                return;
             }
+            throw new GitHubAPIError(`Failed to remove label from PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
     }
 }
@@ -32426,12 +32534,13 @@ class QueueStateManager {
             this.logger.debug('State branch already exists');
         }
         catch (error) {
-            if (error.status === 404) {
+            if (isGitHubError(error) && error.status === 404) {
                 this.logger.info('State branch does not exist, creating it');
                 await this.createStateBranch();
             }
             else {
-                throw new StateError(`Failed to check state branch: ${error.message}`);
+                const message = error instanceof Error ? error.message : String(error);
+                throw new StateError(`Failed to check state branch: ${message}`);
             }
         }
     }
@@ -32462,7 +32571,8 @@ class QueueStateManager {
             this.logger.info('State branch created successfully');
         }
         catch (error) {
-            throw new StateError(`Failed to create state branch: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new StateError(`Failed to create state branch: ${message}`);
         }
     }
     /**
@@ -32486,7 +32596,7 @@ class QueueStateManager {
             return state;
         }
         catch (error) {
-            if (error.status === 404) {
+            if (isGitHubError(error) && error.status === 404) {
                 // State file doesn't exist for this repo yet, create it
                 this.logger.info('State file does not exist, creating empty state', {
                     stateFileName: this.stateFileName,
@@ -32498,7 +32608,8 @@ class QueueStateManager {
             if (error instanceof StateError) {
                 throw error;
             }
-            throw new StateError(`Failed to read state: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new StateError(`Failed to read state: ${message}`);
         }
     }
     /**
@@ -32529,7 +32640,7 @@ class QueueStateManager {
                 }
             }
             catch (error) {
-                if (error.status !== 404) {
+                if (!isGitHubError(error) || error.status !== 404) {
                     throw error;
                 }
                 // File doesn't exist yet, will create it
@@ -32547,19 +32658,20 @@ class QueueStateManager {
             this.logger.info('Queue state written successfully');
         }
         catch (error) {
-            if (error.status === 409 && retryOnConflict) {
+            if (isGitHubError(error) && error.status === 409 && retryOnConflict) {
                 // Conflict - another process updated the state
                 this.logger.warning('State update conflict, retrying', {
                     stateFileName: this.stateFileName,
                 });
-                // Wait a bit and retry
+                // Wait a bit and retry (re-reads SHA on next attempt)
                 await this.sleep(1000 + Math.random() * 1000);
                 return this.writeState(state, false);
             }
-            if (error.status === 409) {
+            if (isGitHubError(error) && error.status === 409) {
                 throw new ConcurrencyError('State update conflict after retry');
             }
-            throw new StateError(`Failed to write state: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new StateError(`Failed to write state: ${message}`);
         }
     }
     /**
@@ -32710,6 +32822,61 @@ class QueueStateManager {
     }
 }
 
+;// CONCATENATED MODULE: ../../utils/action-helpers.ts
+/**
+ * Shared helper utilities for GitHub Action entry points
+ */
+
+const VALID_MERGE_METHODS = (/* unused pure expression or super */ null && (['merge', 'squash', 'rebase']));
+/**
+ * Parse a repository string in "owner/repo" format into a RepositoryInfo object
+ */
+function parseRepository(repoString) {
+    const [owner, repo] = repoString.split('/');
+    if (!owner || !repo) {
+        throw new Error(`Invalid repository format: "${repoString}". Expected "owner/repo".`);
+    }
+    return { owner, repo };
+}
+/**
+ * Build a QueueConfig from GitHub Action inputs.
+ * Validates numeric fields and the merge-method enum.
+ */
+function getConfig() {
+    const mergeMethod = core.getInput('merge-method');
+    if (!VALID_MERGE_METHODS.includes(mergeMethod)) {
+        throw new Error(`Invalid merge method: "${mergeMethod}". Must be one of: ${VALID_MERGE_METHODS.join(', ')}`);
+    }
+    const requiredApprovals = parseInt(core.getInput('required-approvals'), 10);
+    if (isNaN(requiredApprovals) || requiredApprovals < 0) {
+        throw new Error(`Invalid required-approvals: "${core.getInput('required-approvals')}". Must be a non-negative integer.`);
+    }
+    const updateTimeoutMinutes = parseInt(core.getInput('update-timeout-minutes'), 10);
+    if (isNaN(updateTimeoutMinutes) || updateTimeoutMinutes <= 0) {
+        throw new Error(`Invalid update-timeout-minutes: "${core.getInput('update-timeout-minutes')}". Must be a positive integer.`);
+    }
+    return {
+        queueLabel: core.getInput('queue-label'),
+        failedLabel: core.getInput('failed-label'),
+        conflictLabel: core.getInput('conflict-label'),
+        processingLabel: core.getInput('processing-label'),
+        updatingLabel: core.getInput('updating-label'),
+        queuedLabel: core.getInput('queued-label'),
+        requiredApprovals,
+        requireAllChecks: core.getInput('require-all-checks') === 'true',
+        allowDraft: core.getInput('allow-draft') === 'true',
+        blockLabels: core
+            .getInput('block-labels')
+            .split(',')
+            .map(l => l.trim())
+            .filter(Boolean),
+        autoUpdateBranch: core.getInput('auto-update-branch') === 'true',
+        updateTimeoutMinutes,
+        mergeMethod: mergeMethod,
+        deleteBranchAfterMerge: core.getInput('delete-branch-after-merge') === 'true',
+    };
+}
+
 ;// CONCATENATED MODULE: ./index.ts
 /**
  * Remove from Queue Action
@@ -32719,33 +32886,24 @@ class QueueStateManager {
 
 
 
-/**
- * Parse repository from input string
- */
-function parseRepository(repoString) {
-    const [owner, repo] = repoString.split('/');
-    if (!owner || !repo) {
-        throw new Error(`Invalid repository format: ${repoString}`);
-    }
-    return { owner, repo };
-}
+
 /**
  * Main action logic
  */
 async function run() {
     try {
         // Get inputs
-        const token = core.getInput('github-token', { required: true });
-        const targetRepo = parseRepository(core.getInput('repository'));
-        const prNumber = parseInt(core.getInput('pr-number'), 10);
+        const token = lib_core.getInput('github-token', { required: true });
+        const targetRepo = parseRepository(lib_core.getInput('repository'));
+        const prNumber = parseInt(lib_core.getInput('pr-number'), 10);
         const mergeQueueRepo = {
-            owner: core.getInput('merge-queue-owner'),
-            repo: core.getInput('merge-queue-repo'),
+            owner: lib_core.getInput('merge-queue-owner'),
+            repo: lib_core.getInput('merge-queue-repo'),
         };
-        const reason = core.getInput('reason') || 'Manual removal';
-        const queuedLabel = core.getInput('queued-label');
-        const processingLabel = core.getInput('processing-label');
-        const updatingLabel = core.getInput('updating-label');
+        const reason = lib_core.getInput('reason') || 'Manual removal';
+        const queuedLabel = lib_core.getInput('queued-label');
+        const processingLabel = lib_core.getInput('processing-label');
+        const updatingLabel = lib_core.getInput('updating-label');
         const logger = createLogger({
             action: 'remove-from-queue',
             repo: `${targetRepo.owner}/${targetRepo.repo}`,
@@ -32768,19 +32926,19 @@ async function run() {
             await api.removeLabel(prNumber, queuedLabel);
             await api.removeLabel(prNumber, processingLabel);
             await api.removeLabel(prNumber, updatingLabel);
-            core.setOutput('removed', 'true');
+            lib_core.setOutput('removed', 'true');
         }
         else {
             logger.warning('PR was not in queue', { prNumber });
-            core.setOutput('removed', 'false');
+            lib_core.setOutput('removed', 'false');
         }
     }
     catch (error) {
         if (error instanceof Error) {
-            core.setFailed(error.message);
+            lib_core.setFailed(error.message);
         }
         else {
-            core.setFailed('Unknown error occurred');
+            lib_core.setFailed('Unknown error occurred');
         }
     }
 }

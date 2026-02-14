@@ -47,4 +47,12 @@ export declare class TimeoutError extends QueueError {
 export declare class ConcurrencyError extends StateError {
     constructor(message: string);
 }
+/**
+ * Type guard for errors returned by the GitHub/Octokit API.
+ * These errors carry a numeric `status` property (HTTP status code).
+ */
+export declare function isGitHubError(error: unknown): error is {
+    status: number;
+    message: string;
+};
 //# sourceMappingURL=errors.d.ts.map
