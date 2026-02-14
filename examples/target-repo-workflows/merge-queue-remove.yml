@@ -6,11 +6,6 @@ on:
       - unlabeled  # When "ready" label is removed
       - closed     # When PR is closed
 
-# Prevent concurrent queue state modifications
-concurrency:
-  group: merge-queue-state-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   remove-from-queue:
     name: Remove PR from Merge Queue

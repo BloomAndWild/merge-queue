@@ -4,11 +4,6 @@ on:
   pull_request:
     types: [labeled]
 
-# Prevent concurrent queue state modifications
-concurrency:
-  group: merge-queue-state-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   add-to-queue:
     name: Add PR to Merge Queue

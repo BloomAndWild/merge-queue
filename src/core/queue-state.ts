@@ -169,9 +169,12 @@ export class QueueStateManager {
   }
 
   /**
-   * Write the queue state to the state branch
+   * Write the queue state to the state branch.
+   *
+   * Throws ConcurrencyError on 409 conflict so that callers (atomicUpdate)
+   * can re-read fresh state and retry the full mutation.
    */
-  async writeState(state: QueueState, retryOnConflict = true): Promise<void> {
+  async writeState(state: QueueState): Promise<void> {
     this.logger.debug('Writing queue state', { stateFileName: this.stateFileName });
 
     // Ensure state branch exists
@@ -220,19 +223,10 @@ export class QueueStateManager {
 
       this.logger.info('Queue state written successfully');
     } catch (error: unknown) {
-      if (isGitHubError(error) && error.status === 409 && retryOnConflict) {
-        // Conflict - another process updated the state
-        this.logger.warning('State update conflict, retrying', {
-          stateFileName: this.stateFileName,
-        });
-
-        // Wait a bit and retry (re-reads SHA on next attempt)
-        await this.sleep(1000 + Math.random() * 1000);
-        return this.writeState(state, false);
-      }
-
       if (isGitHubError(error) && error.status === 409) {
-        throw new ConcurrencyError('State update conflict after retry');
+        throw new ConcurrencyError(
+          'State update conflict — another process modified the state concurrently'
+        );
       }
 
       const message = error instanceof Error ? error.message : String(error);
@@ -241,62 +235,108 @@ export class QueueStateManager {
   }
 
   /**
-   * Add a PR to the queue
+   * Perform a state mutation atomically using a compare-and-swap loop.
+   *
+   * Reads the latest state, applies the mutation function, then attempts to
+   * write. If a 409 conflict occurs (another process wrote in between), the
+   * entire cycle is retried with fresh state — ensuring no updates are lost.
+   *
+   * @param mutate - Function that receives the latest state and returns a result.
+   *                 It should mutate the state object in-place.
+   * @param maxRetries - Maximum number of retry attempts (default: 5).
+   * @returns The value returned by the mutate function on the successful attempt.
    */
-  async addToQueue(pr: QueuedPR): Promise<number> {
-    const state = await this.readState();
+  async atomicUpdate<T>(
+    mutate: (state: QueueState) => T,
+    maxRetries = 5
+  ): Promise<T> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Always read the latest state at the start of each attempt
+      const state = await this.readState();
 
-    // Check if PR is already in queue
-    if (state.queue.some(q => q.pr_number === pr.pr_number)) {
-      this.logger.warning('PR already in queue', { prNumber: pr.pr_number });
-      return state.queue.findIndex(q => q.pr_number === pr.pr_number) + 1;
-    }
+      // Apply the caller's mutation
+      const result = mutate(state);
 
-    // Check if PR is currently being processed
-    if (state.current?.pr_number === pr.pr_number) {
-      this.logger.warning('PR is currently being processed', {
-        prNumber: pr.pr_number,
-      });
-      return 0; // Position 0 means it's being processed
-    }
-
-    // Add to queue
-    state.queue.push(pr);
-
-    // Sort by priority (higher first) then by added_at (earlier first)
-    state.queue.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return b.priority - a.priority;
+      try {
+        await this.writeState(state);
+        return result;
+      } catch (error: unknown) {
+        if (error instanceof ConcurrencyError && attempt < maxRetries) {
+          // Exponential backoff with jitter to avoid thundering herd
+          const delay = 1000 * Math.pow(2, attempt) + Math.random() * 1000;
+          this.logger.warning(
+            `State conflict on attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${Math.round(delay)}ms`,
+            { stateFileName: this.stateFileName }
+          );
+          await this.sleep(delay);
+          continue;
+        }
+        throw error;
       }
-      return new Date(a.added_at).getTime() - new Date(b.added_at).getTime();
-    });
+    }
 
-    await this.writeState(state);
-
-    const position = state.queue.findIndex(q => q.pr_number === pr.pr_number) + 1;
-    this.logger.info('PR added to queue', { prNumber: pr.pr_number, position });
-
-    return position;
+    // Should be unreachable, but satisfy TypeScript
+    throw new ConcurrencyError(
+      `State update failed after ${maxRetries + 1} attempts`
+    );
   }
 
   /**
-   * Remove a PR from the queue
+   * Add a PR to the queue (concurrency-safe).
+   *
+   * Uses atomicUpdate to ensure that concurrent add operations don't
+   * overwrite each other — each attempt re-reads the latest state.
+   */
+  async addToQueue(pr: QueuedPR): Promise<number> {
+    return this.atomicUpdate((state) => {
+      // Check if PR is already in queue
+      if (state.queue.some(q => q.pr_number === pr.pr_number)) {
+        this.logger.warning('PR already in queue', { prNumber: pr.pr_number });
+        return state.queue.findIndex(q => q.pr_number === pr.pr_number) + 1;
+      }
+
+      // Check if PR is currently being processed
+      if (state.current?.pr_number === pr.pr_number) {
+        this.logger.warning('PR is currently being processed', {
+          prNumber: pr.pr_number,
+        });
+        return 0; // Position 0 means it's being processed
+      }
+
+      // Add to queue
+      state.queue.push(pr);
+
+      // Sort by priority (higher first) then by added_at (earlier first)
+      state.queue.sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority;
+        }
+        return new Date(a.added_at).getTime() - new Date(b.added_at).getTime();
+      });
+
+      const position = state.queue.findIndex(q => q.pr_number === pr.pr_number) + 1;
+      this.logger.info('PR added to queue', { prNumber: pr.pr_number, position });
+
+      return position;
+    });
+  }
+
+  /**
+   * Remove a PR from the queue (concurrency-safe).
    */
   async removeFromQueue(prNumber: number): Promise<boolean> {
-    const state = await this.readState();
+    return this.atomicUpdate((state) => {
+      const index = state.queue.findIndex(q => q.pr_number === prNumber);
 
-    const index = state.queue.findIndex(q => q.pr_number === prNumber);
+      if (index === -1) {
+        this.logger.warning('PR not found in queue', { prNumber });
+        return false;
+      }
 
-    if (index === -1) {
-      this.logger.warning('PR not found in queue', { prNumber });
-      return false;
-    }
-
-    state.queue.splice(index, 1);
-    await this.writeState(state);
-
-    this.logger.info('PR removed from queue', { prNumber });
-    return true;
+      state.queue.splice(index, 1);
+      this.logger.info('PR removed from queue', { prNumber });
+      return true;
+    });
   }
 
   /**
@@ -313,74 +353,71 @@ export class QueueStateManager {
   }
 
   /**
-   * Set the current PR being processed
+   * Set the current PR being processed (concurrency-safe).
    */
   async setCurrentPR(current: CurrentPR | null): Promise<void> {
-    const state = await this.readState();
-    state.current = current;
-    await this.writeState(state);
-
-    this.logger.info('Current PR updated', { current });
+    await this.atomicUpdate((state) => {
+      state.current = current;
+      this.logger.info('Current PR updated', { current });
+    });
   }
 
   /**
-   * Update current PR status
+   * Update current PR status (concurrency-safe).
    */
   async updateCurrentStatus(
     status: CurrentPR['status'],
     updated_at?: string
   ): Promise<void> {
-    const state = await this.readState();
+    await this.atomicUpdate((state) => {
+      if (!state.current) {
+        throw new StateError('No current PR to update');
+      }
 
-    if (!state.current) {
-      throw new StateError('No current PR to update');
-    }
+      state.current.status = status;
+      if (updated_at) {
+        state.current.updated_at = updated_at;
+      }
 
-    state.current.status = status;
-    if (updated_at) {
-      state.current.updated_at = updated_at;
-    }
-
-    await this.writeState(state);
-    this.logger.debug('Current PR status updated', { status });
+      this.logger.debug('Current PR status updated', { status });
+    });
   }
 
   /**
-   * Complete processing of current PR and add to history
+   * Complete processing of current PR and add to history (concurrency-safe).
    */
   async completeCurrentPR(entry: HistoryEntry): Promise<void> {
-    const state = await this.readState();
+    await this.atomicUpdate((state) => {
+      if (!state.current) {
+        throw new StateError('No current PR to complete');
+      }
 
-    if (!state.current) {
-      throw new StateError('No current PR to complete');
-    }
+      // Remove from queue if still there
+      state.queue = state.queue.filter(
+        q => q.pr_number !== state.current!.pr_number
+      );
 
-    // Remove from queue if still there
-    state.queue = state.queue.filter(
-      q => q.pr_number !== state.current!.pr_number
-    );
+      // Add to history
+      state.history.unshift(entry);
 
-    // Add to history
-    state.history.unshift(entry);
+      // Keep only last 100 history entries
+      if (state.history.length > 100) {
+        state.history = state.history.slice(0, 100);
+      }
 
-    // Keep only last 100 history entries
-    if (state.history.length > 100) {
-      state.history = state.history.slice(0, 100);
-    }
+      // Update stats
+      state.stats.total_processed++;
+      if (entry.result === 'merged') {
+        state.stats.total_merged++;
+      } else if (entry.result === 'failed' || entry.result === 'conflict') {
+        state.stats.total_failed++;
+      }
 
-    // Update stats
-    state.stats.total_processed++;
-    if (entry.result === 'merged') {
-      state.stats.total_merged++;
-    } else if (entry.result === 'failed' || entry.result === 'conflict') {
-      state.stats.total_failed++;
-    }
+      // Clear current
+      state.current = null;
 
-    // Clear current
-    state.current = null;
-
-    await this.writeState(state);
-    this.logger.info('Current PR completed', { entry });
+      this.logger.info('Current PR completed', { entry });
+    });
   }
 
   /**
