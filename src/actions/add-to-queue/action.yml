@@ -1,0 +1,124 @@
+name: 'Add PR to Merge Queue'
+description: 'Validates a PR and adds it to the merge queue'
+author: 'Josh Butterworth'
+
+inputs:
+  github-token:
+    description: 'GitHub token with repo and workflow permissions'
+    required: true
+
+  # Repository identification (auto-detected from context)
+  repository:
+    description: 'Target repository in format owner/repo (auto-detected)'
+    required: false
+    default: ${{ github.repository }}
+
+  pr-number:
+    description: 'PR number (auto-detected from context)'
+    required: false
+    default: ${{ github.event.pull_request.number }}
+
+  # Merge queue repository (where state is stored)
+  merge-queue-owner:
+    description: 'Owner of the merge-queue repository'
+    required: false
+    default: ${{ github.repository_owner }}
+
+  merge-queue-repo:
+    description: 'Name of the merge-queue repository'
+    required: false
+    default: 'merge-queue'
+
+  # Queue configuration
+  queue-label:
+    description: 'Label that triggers queue entry'
+    required: false
+    default: 'ready'
+
+  failed-label:
+    description: 'Label applied when validation fails'
+    required: false
+    default: 'merge-queue-failed'
+
+  conflict-label:
+    description: 'Label applied when merge conflicts are detected'
+    required: false
+    default: 'merge-queue-conflict'
+
+  processing-label:
+    description: 'Label applied when PR is being processed'
+    required: false
+    default: 'merge-processing'
+
+  updating-label:
+    description: 'Label applied when branch is being updated'
+    required: false
+    default: 'merge-updating'
+
+  queued-label:
+    description: 'Label applied when PR is in queue'
+    required: false
+    default: 'queued-for-merge'
+
+  # Validation requirements
+  required-approvals:
+    description: 'Minimum number of required approvals'
+    required: false
+    default: '1'
+
+  require-all-checks:
+    description: 'Require all checks to pass'
+    required: false
+    default: 'true'
+
+  allow-draft:
+    description: 'Allow draft PRs in queue'
+    required: false
+    default: 'false'
+
+  block-labels:
+    description: 'Comma-separated list of labels that block queue entry'
+    required: false
+    default: 'do-not-merge,wip'
+
+  # Branch update configuration
+  auto-update-branch:
+    description: 'Automatically update branch when behind master'
+    required: false
+    default: 'true'
+
+  update-timeout-minutes:
+    description: 'Maximum time to wait for tests after branch update'
+    required: false
+    default: '30'
+
+  # Merge configuration
+  merge-method:
+    description: 'Merge method (merge, squash, or rebase)'
+    required: false
+    default: 'squash'
+
+  delete-branch-after-merge:
+    description: 'Delete branch after successful merge'
+    required: false
+    default: 'true'
+
+  # Priority
+  priority:
+    description: 'Queue priority (higher = processed first)'
+    required: false
+    default: '0'
+
+outputs:
+  position:
+    description: 'Position in queue (0 if currently processing)'
+
+  valid:
+    description: 'Whether PR passed validation'
+
+  validation-reason:
+    description: 'Reason if validation failed'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

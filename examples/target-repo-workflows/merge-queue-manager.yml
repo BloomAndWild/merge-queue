@@ -1,0 +1,61 @@
+name: Merge Queue Manager
+
+on:
+  # Run every 5 minutes
+  schedule:
+    - cron: '*/5 * * * *'
+
+  # Also run when master is updated (to process next PR)
+  push:
+    branches:
+      - main
+      - master
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+# Ensure only one queue processor runs at a time
+concurrency:
+  group: merge-queue-processor
+  cancel-in-progress: false
+
+jobs:
+  process-queue:
+    name: Process Merge Queue
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Process next PR in queue
+        uses: your-org/merge-queue@v1/src/actions/process-queue
+        with:
+          # Authentication
+          github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+
+          # Repository info (auto-detected)
+          repository: ${{ github.repository }}
+
+          # Merge queue repository location
+          merge-queue-owner: your-org
+          merge-queue-repo: merge-queue
+
+          # Queue configuration (must match add-to-queue)
+          queue-label: ready
+          failed-label: merge-queue-failed
+          conflict-label: merge-queue-conflict
+          processing-label: merge-processing
+          updating-label: merge-updating
+          queued-label: queued-for-merge
+
+          # Validation requirements (must match add-to-queue)
+          required-approvals: 1
+          require-all-checks: true
+          allow-draft: false
+          block-labels: do-not-merge,wip
+
+          # Branch update configuration
+          auto-update-branch: true
+          update-timeout-minutes: 30
+
+          # Merge configuration
+          merge-method: squash
+          delete-branch-after-merge: true

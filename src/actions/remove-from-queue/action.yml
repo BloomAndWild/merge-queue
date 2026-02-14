@@ -1,0 +1,60 @@
+name: 'Remove PR from Merge Queue'
+description: 'Removes a PR from the merge queue'
+author: 'Josh Butterworth'
+
+inputs:
+  github-token:
+    description: 'GitHub token with repo and workflow permissions'
+    required: true
+
+  # Repository identification (auto-detected from context)
+  repository:
+    description: 'Target repository in format owner/repo (auto-detected)'
+    required: false
+    default: ${{ github.repository }}
+
+  pr-number:
+    description: 'PR number (auto-detected from context)'
+    required: false
+    default: ${{ github.event.pull_request.number }}
+
+  # Merge queue repository (where state is stored)
+  merge-queue-owner:
+    description: 'Owner of the merge-queue repository'
+    required: false
+    default: ${{ github.repository_owner }}
+
+  merge-queue-repo:
+    description: 'Name of the merge-queue repository'
+    required: false
+    default: 'merge-queue'
+
+  # Labels
+  queued-label:
+    description: 'Label applied when PR is in queue'
+    required: false
+    default: 'queued-for-merge'
+
+  processing-label:
+    description: 'Label applied when PR is being processed'
+    required: false
+    default: 'merge-processing'
+
+  updating-label:
+    description: 'Label applied when branch is being updated'
+    required: false
+    default: 'merge-updating'
+
+  # Reason for removal
+  reason:
+    description: 'Reason for removal (optional, for logging)'
+    required: false
+    default: 'Manual removal'
+
+outputs:
+  removed:
+    description: 'Whether PR was removed from queue'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

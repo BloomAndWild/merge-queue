@@ -1,0 +1,50 @@
+{
+  "name": "@merge-queue/core",
+  "version": "0.1.0",
+  "description": "GitHub merge queue utility for automated PR validation and merging",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && npm run build:actions",
+    "build:actions": "npm run build:add-to-queue && npm run build:process-queue && npm run build:remove-from-queue",
+    "build:add-to-queue": "cd src/actions/add-to-queue && npm run build",
+    "build:process-queue": "cd src/actions/process-queue && npm run build",
+    "build:remove-from-queue": "cd src/actions/remove-from-queue && npm run build",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint 'src/**/*.ts'",
+    "lint:fix": "eslint 'src/**/*.ts' --fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "github",
+    "merge-queue",
+    "pull-request",
+    "automation",
+    "github-actions"
+  ],
+  "author": "Josh Butterworth",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "@octokit/rest": "^20.0.2",
+    "@octokit/types": "^12.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.17.6",
+    "@typescript-eslint/eslint-plugin": "^8.18.1",
+    "@typescript-eslint/parser": "^8.18.1",
+    "@vercel/ncc": "^0.38.3",
+    "eslint": "^9.17.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}

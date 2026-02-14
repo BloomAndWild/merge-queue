@@ -44,6 +44,18 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 - Use GitHub's GITHUB_TOKEN or PAT securely
 - Implement proper error handling for API calls
 
+### Dependency Security
+- **Lock Files**: Always commit `package-lock.json` for deterministic builds across environments
+- **Audit Regularly**: Run `npm audit` before releases and fix critical/high vulnerabilities
+- **Keep Updated**: Use Dependabot or Renovate bot to automate dependency updates
+- **Minimize Dependencies**: Evaluate if each new dependency is truly necessary - fewer deps = smaller attack surface
+- **Review Before Adding**: Check package popularity, maintenance status, and license before adding
+- **Use `npm ci`**: In CI/CD and GitHub Actions, use `npm ci` instead of `npm install` for reproducible builds
+- **Pin Action Versions**: When using third-party GitHub Actions, pin to specific commit SHAs, not tags
+- **Verify Integrity**: Use `npm install --ignore-scripts` initially if concerned about post-install scripts
+- **Avoid Deprecated**: Replace deprecated packages promptly - they won't receive security patches
+- **Scope Permissions**: If publishing to npm, use scoped packages and minimal access tokens
+
 ### Testing
 - Write unit tests for all core modules
 - Test edge cases (conflicts, failures, race conditions)

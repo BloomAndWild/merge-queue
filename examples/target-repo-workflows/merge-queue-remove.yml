@@ -1,0 +1,39 @@
+name: Merge Queue Remove
+
+on:
+  pull_request:
+    types:
+      - unlabeled  # When "ready" label is removed
+      - closed     # When PR is closed
+
+jobs:
+  remove-from-queue:
+    name: Remove PR from Merge Queue
+    # Run when "ready" label is removed OR PR is closed
+    if: |
+      (github.event.action == 'unlabeled' && github.event.label.name == 'ready') ||
+      github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Remove from merge queue
+        uses: your-org/merge-queue@v1/src/actions/remove-from-queue
+        with:
+          # Authentication
+          github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+
+          # Repository info (auto-detected)
+          repository: ${{ github.repository }}
+          pr-number: ${{ github.event.pull_request.number }}
+
+          # Merge queue repository location
+          merge-queue-owner: your-org
+          merge-queue-repo: merge-queue
+
+          # Labels to remove
+          queued-label: queued-for-merge
+          processing-label: merge-processing
+          updating-label: merge-updating
+
+          # Reason for removal (optional)
+          reason: ${{ github.event.action == 'closed' && 'PR closed' || 'Label removed' }}
