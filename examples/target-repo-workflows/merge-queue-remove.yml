@@ -26,10 +26,6 @@ jobs:
           repository: ${{ github.repository }}
           pr-number: ${{ github.event.pull_request.number }}
 
-          # Merge queue repository location
-          merge-queue-owner: your-org
-          merge-queue-repo: merge-queue
-
           # Labels to remove
           queued-label: queued-for-merge
           processing-label: merge-processing

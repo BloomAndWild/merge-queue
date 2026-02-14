@@ -431,6 +431,42 @@ export class GitHubAPI {
   }
 
   /**
+   * List open PR numbers that have the given label, sorted by creation date
+   * (oldest first).
+   *
+   * Uses the Issues API with a label filter, then keeps only pull requests.
+   */
+  async listPRsWithLabel(label: string): Promise<number[]> {
+    this.logger.debug('Listing PRs with label', { label });
+
+    try {
+      const { data } = await this.octokit.rest.issues.listForRepo({
+        owner: this.repo.owner,
+        repo: this.repo.repo,
+        labels: label,
+        state: 'open',
+        sort: 'created',
+        direction: 'asc',
+        per_page: 100,
+      });
+
+      // issues.listForRepo returns both issues and PRs — keep only PRs
+      const prNumbers = data
+        .filter(issue => issue.pull_request != null)
+        .map(issue => issue.number);
+
+      this.logger.debug('Found PRs with label', { label, count: prNumbers.length, prNumbers });
+      return prNumbers;
+    } catch (error) {
+      throw new GitHubAPIError(
+        `Failed to list PRs with label "${label}"`,
+        isGitHubError(error) ? error.status : undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Remove a label from a PR
    */
   async removeLabel(prNumber: number, label: string): Promise<void> {

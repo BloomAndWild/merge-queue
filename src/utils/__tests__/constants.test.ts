@@ -3,8 +3,6 @@
  */
 
 import {
-  STATE_BRANCH,
-  QUEUE_VERSION,
   DEFAULT_CONFIG,
   RETRY_CONFIG,
   TIMEOUTS,
@@ -13,18 +11,6 @@ import {
 } from '../constants';
 
 describe('Constants', () => {
-  describe('STATE_BRANCH', () => {
-    it('should be defined', () => {
-      expect(STATE_BRANCH).toBe('merge-queue-state');
-    });
-  });
-
-  describe('QUEUE_VERSION', () => {
-    it('should be a valid semver', () => {
-      expect(QUEUE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
-    });
-  });
-
   describe('DEFAULT_CONFIG', () => {
     it('should have all required fields', () => {
       expect(DEFAULT_CONFIG).toHaveProperty('queueLabel');
@@ -56,13 +42,13 @@ describe('Constants', () => {
   });
 
   describe('COMMENT_TEMPLATES', () => {
-    it('should have template functions', () => {
-      expect(typeof COMMENT_TEMPLATES.addedToQueue).toBe('function');
+    it('should have template properties', () => {
+      expect(typeof COMMENT_TEMPLATES.addedToQueue).toBe('string');
       expect(typeof COMMENT_TEMPLATES.buildSummary).toBe('function');
     });
 
-    it('should generate correct addedToQueue message', () => {
-      expect(COMMENT_TEMPLATES.addedToQueue(3)).toContain('position 3');
+    it('should have correct addedToQueue message', () => {
+      expect(COMMENT_TEMPLATES.addedToQueue).toContain('merge queue');
     });
 
     it('should build a summary with success steps', () => {

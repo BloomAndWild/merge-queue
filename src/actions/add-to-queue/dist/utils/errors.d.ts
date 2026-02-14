@@ -15,12 +15,6 @@ export declare class ValidationError extends QueueError {
     constructor(message: string, reason: string);
 }
 /**
- * Error when state operations fail
- */
-export declare class StateError extends QueueError {
-    constructor(message: string);
-}
-/**
  * Error when GitHub API operations fail
  */
 export declare class GitHubAPIError extends QueueError {
@@ -40,12 +34,6 @@ export declare class MergeConflictError extends QueueError {
 export declare class TimeoutError extends QueueError {
     timeoutMs: number;
     constructor(message: string, timeoutMs: number);
-}
-/**
- * Error when concurrent state updates conflict
- */
-export declare class ConcurrencyError extends StateError {
-    constructor(message: string);
 }
 /**
  * Type guard for errors returned by the GitHub/Octokit API.

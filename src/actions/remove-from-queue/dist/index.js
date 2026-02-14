@@ -31868,15 +31868,6 @@ class ValidationError extends QueueError {
     }
 }
 /**
- * Error when state operations fail
- */
-class StateError extends QueueError {
-    constructor(message) {
-        super(message);
-        this.name = 'StateError';
-    }
-}
-/**
  * Error when GitHub API operations fail
  */
 class GitHubAPIError extends QueueError {
@@ -31907,15 +31898,6 @@ class TimeoutError extends QueueError {
         super(message);
         this.timeoutMs = timeoutMs;
         this.name = 'TimeoutError';
-    }
-}
-/**
- * Error when concurrent state updates conflict
- */
-class ConcurrencyError extends StateError {
-    constructor(message) {
-        super(message);
-        this.name = 'ConcurrencyError';
     }
 }
 /**
@@ -32372,6 +32354,35 @@ class GitHubAPI {
         }
     }
     /**
+     * List open PR numbers that have the given label, sorted by creation date
+     * (oldest first).
+     *
+     * Uses the Issues API with a label filter, then keeps only pull requests.
+     */
+    async listPRsWithLabel(label) {
+        this.logger.debug('Listing PRs with label', { label });
+        try {
+            const { data } = await this.octokit.rest.issues.listForRepo({
+                owner: this.repo.owner,
+                repo: this.repo.repo,
+                labels: label,
+                state: 'open',
+                sort: 'created',
+                direction: 'asc',
+                per_page: 100,
+            });
+            // issues.listForRepo returns both issues and PRs — keep only PRs
+            const prNumbers = data
+                .filter(issue => issue.pull_request != null)
+                .map(issue => issue.number);
+            this.logger.debug('Found PRs with label', { label, count: prNumbers.length, prNumbers });
+            return prNumbers;
+        }
+        catch (error) {
+            throw new GitHubAPIError(`Failed to list PRs with label "${label}"`, isGitHubError(error) ? error.status : undefined, error);
+        }
+    }
+    /**
      * Remove a label from a PR
      */
     async removeLabel(prNumber, label) {
@@ -32391,474 +32402,6 @@ class GitHubAPI {
             }
             throw new GitHubAPIError(`Failed to remove label from PR #${prNumber}`, isGitHubError(error) ? error.status : undefined, error);
         }
-    }
-}
-
-;// CONCATENATED MODULE: ../../utils/constants.ts
-/**
- * Constants used throughout the merge queue system
- */
-/**
- * Name of the branch that stores queue state
- */
-const STATE_BRANCH = 'merge-queue-state';
-/**
- * Current version of the queue state schema
- */
-const QUEUE_VERSION = '1.0.0';
-/**
- * Default queue configuration
- */
-const DEFAULT_CONFIG = {
-    queueLabel: 'ready',
-    failedLabel: 'merge-queue-failed',
-    conflictLabel: 'merge-queue-conflict',
-    processingLabel: 'merge-processing',
-    updatingLabel: 'merge-updating',
-    queuedLabel: 'queued-for-merge',
-    requireAllChecks: true,
-    allowDraft: false,
-    blockLabels: ['do-not-merge', 'wip'],
-    autoUpdateBranch: true,
-    updateTimeoutMinutes: 30,
-    mergeMethod: 'squash',
-    deleteBranchAfterMerge: true,
-    ignoreChecks: [],
-};
-/**
- * Retry configuration for API calls
- */
-const RETRY_CONFIG = {
-    maxRetries: 3,
-    initialDelayMs: 1000,
-    maxDelayMs: 10000,
-    backoffMultiplier: 2,
-};
-/**
- * Timeout configurations (in milliseconds)
- */
-const TIMEOUTS = {
-    checkStatusPollMs: 30000, // 30 seconds between status check polls
-    maxTestWaitMs: 30 * 60 * 1000, // 30 minutes max wait for tests
-    apiTimeoutMs: 30000, // 30 seconds for API calls
-};
-/**
- * Comment templates for PR communication
- */
-const COMMENT_TEMPLATES = {
-    addedToQueue: (position) => `✅ Added to merge queue at position ${position}`,
-    removedChecksFailure: (details) => `❌ Removed from queue: checks no longer passing\n\n${details}`,
-    positionUpdate: (position) => `📍 Queue position: ${position}`,
-    /**
-     * Build a single summary comment from the collected processing steps.
-     * Posted once at the end of process-queue instead of multiple comments.
-     */
-    buildSummary: (title, steps) => {
-        const lines = [`## 🔀 Merge Queue — ${title}`, ''];
-        for (const step of steps) {
-            const icon = step.status === 'success' ? '✅' : '❌';
-            lines.push(`- ${icon} ${step.label}`);
-            if (step.detail) {
-                lines.push(`  > ${step.detail.split('\n').join('\n  > ')}`);
-            }
-        }
-        return lines.join('\n');
-    },
-};
-/**
- * Label colors for queue-related labels (GitHub hex format)
- */
-const LABEL_COLORS = {
-    ready: '0e8a16',
-    queued: 'fbca04',
-    processing: '1d76db',
-    updating: '5319e7',
-    failed: 'd73a4a',
-    conflict: 'b60205',
-};
-
-;// CONCATENATED MODULE: ../../core/queue-state.ts
-/**
- * Queue state management with Git-based persistence
- */
-
-
-
-
-/**
- * Generate state file name for a repository
- */
-function getStateFileName(repo) {
-    return `${repo.owner}-${repo.repo}-queue.json`;
-}
-/**
- * Create an empty queue state
- */
-function createEmptyState() {
-    return {
-        version: QUEUE_VERSION,
-        updated_at: new Date().toISOString(),
-        current: null,
-        queue: [],
-        history: [],
-        stats: {
-            total_processed: 0,
-            total_merged: 0,
-            total_failed: 0,
-        },
-    };
-}
-/**
- * Queue state manager with Git-based persistence
- */
-class QueueStateManager {
-    mergeQueueRepo;
-    targetRepo;
-    octokit;
-    logger;
-    stateFileName;
-    constructor(token, mergeQueueRepo, targetRepo, logger) {
-        this.mergeQueueRepo = mergeQueueRepo;
-        this.targetRepo = targetRepo;
-        this.octokit = (0,github.getOctokit)(token);
-        this.logger = logger || createLogger({
-            component: 'QueueStateManager',
-            targetRepo: `${targetRepo.owner}/${targetRepo.repo}`,
-        });
-        this.stateFileName = getStateFileName(targetRepo);
-    }
-    /**
-     * Initialize the state branch if it doesn't exist
-     */
-    async initializeStateBranch() {
-        this.logger.info('Checking if state branch exists');
-        try {
-            await this.octokit.rest.repos.getBranch({
-                owner: this.mergeQueueRepo.owner,
-                repo: this.mergeQueueRepo.repo,
-                branch: STATE_BRANCH,
-            });
-            this.logger.debug('State branch already exists');
-        }
-        catch (error) {
-            if (isGitHubError(error) && error.status === 404) {
-                this.logger.info('State branch does not exist, creating it');
-                await this.createStateBranch();
-            }
-            else {
-                const message = error instanceof Error ? error.message : String(error);
-                throw new StateError(`Failed to check state branch: ${message}`);
-            }
-        }
-    }
-    /**
-     * Create the state branch
-     */
-    async createStateBranch() {
-        try {
-            // Get the default branch to use as base
-            const { data: repo } = await this.octokit.rest.repos.get({
-                owner: this.mergeQueueRepo.owner,
-                repo: this.mergeQueueRepo.repo,
-            });
-            const defaultBranch = repo.default_branch;
-            // Get the latest commit from default branch
-            const { data: ref } = await this.octokit.rest.git.getRef({
-                owner: this.mergeQueueRepo.owner,
-                repo: this.mergeQueueRepo.repo,
-                ref: `heads/${defaultBranch}`,
-            });
-            // Create the new branch
-            await this.octokit.rest.git.createRef({
-                owner: this.mergeQueueRepo.owner,
-                repo: this.mergeQueueRepo.repo,
-                ref: `refs/heads/${STATE_BRANCH}`,
-                sha: ref.object.sha,
-            });
-            this.logger.info('State branch created successfully');
-        }
-        catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            throw new StateError(`Failed to create state branch: ${message}`);
-        }
-    }
-    /**
-     * Read the queue state from the state branch
-     */
-    async readState() {
-        this.logger.debug('Reading queue state', { stateFileName: this.stateFileName });
-        try {
-            const { data } = await this.octokit.rest.repos.getContent({
-                owner: this.mergeQueueRepo.owner,
-                repo: this.mergeQueueRepo.repo,
-                path: this.stateFileName,
-                ref: STATE_BRANCH,
-            });
-            if (Array.isArray(data) || data.type !== 'file') {
-                throw new StateError('State file is not a file');
-            }
-            const content = Buffer.from(data.content, 'base64').toString('utf-8');
-            const state = JSON.parse(content);
-            this.validateState(state);
-            return state;
-        }
-        catch (error) {
-            if (isGitHubError(error) && error.status === 404) {
-                // State file doesn't exist for this repo yet, create it
-                this.logger.info('State file does not exist, creating empty state', {
-                    stateFileName: this.stateFileName,
-                });
-                const emptyState = createEmptyState();
-                await this.writeState(emptyState);
-                return emptyState;
-            }
-            if (error instanceof StateError) {
-                throw error;
-            }
-            const message = error instanceof Error ? error.message : String(error);
-            throw new StateError(`Failed to read state: ${message}`);
-        }
-    }
-    /**
-     * Write the queue state to the state branch.
-     *
-     * Throws ConcurrencyError on 409 conflict so that callers (atomicUpdate)
-     * can re-read fresh state and retry the full mutation.
-     */
-    async writeState(state) {
-        this.logger.debug('Writing queue state', { stateFileName: this.stateFileName });
-        // Ensure state branch exists
-        await this.initializeStateBranch();
-        // Update timestamp
-        state.updated_at = new Date().toISOString();
-        // Validate state before writing
-        this.validateState(state);
-        const content = JSON.stringify(state, null, 2);
-        const contentBase64 = Buffer.from(content, 'utf-8').toString('base64');
-        try {
-            // Try to get existing file to get its SHA
-            let sha;
-            try {
-                const { data } = await this.octokit.rest.repos.getContent({
-                    owner: this.mergeQueueRepo.owner,
-                    repo: this.mergeQueueRepo.repo,
-                    path: this.stateFileName,
-                    ref: STATE_BRANCH,
-                });
-                if (!Array.isArray(data) && data.type === 'file') {
-                    sha = data.sha;
-                }
-            }
-            catch (error) {
-                if (!isGitHubError(error) || error.status !== 404) {
-                    throw error;
-                }
-                // File doesn't exist yet, will create it
-            }
-            // Create or update the file
-            await this.octokit.rest.repos.createOrUpdateFileContents({
-                owner: this.mergeQueueRepo.owner,
-                repo: this.mergeQueueRepo.repo,
-                path: this.stateFileName,
-                message: `Update queue state for ${this.targetRepo.owner}/${this.targetRepo.repo}`,
-                content: contentBase64,
-                branch: STATE_BRANCH,
-                sha,
-            });
-            this.logger.info('Queue state written successfully');
-        }
-        catch (error) {
-            if (isGitHubError(error) && error.status === 409) {
-                throw new ConcurrencyError('State update conflict — another process modified the state concurrently');
-            }
-            const message = error instanceof Error ? error.message : String(error);
-            throw new StateError(`Failed to write state: ${message}`);
-        }
-    }
-    /**
-     * Perform a state mutation atomically using a compare-and-swap loop.
-     *
-     * Reads the latest state, applies the mutation function, then attempts to
-     * write. If a 409 conflict occurs (another process wrote in between), the
-     * entire cycle is retried with fresh state — ensuring no updates are lost.
-     *
-     * @param mutate - Function that receives the latest state and returns a result.
-     *                 It should mutate the state object in-place.
-     * @param maxRetries - Maximum number of retry attempts (default: 5).
-     * @returns The value returned by the mutate function on the successful attempt.
-     */
-    async atomicUpdate(mutate, maxRetries = 5) {
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            // Always read the latest state at the start of each attempt
-            const state = await this.readState();
-            // Apply the caller's mutation
-            const result = mutate(state);
-            try {
-                await this.writeState(state);
-                return result;
-            }
-            catch (error) {
-                if (error instanceof ConcurrencyError && attempt < maxRetries) {
-                    // Exponential backoff with jitter to avoid thundering herd
-                    const delay = 1000 * Math.pow(2, attempt) + Math.random() * 1000;
-                    this.logger.warning(`State conflict on attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${Math.round(delay)}ms`, { stateFileName: this.stateFileName });
-                    await this.sleep(delay);
-                    continue;
-                }
-                throw error;
-            }
-        }
-        // Should be unreachable, but satisfy TypeScript
-        throw new ConcurrencyError(`State update failed after ${maxRetries + 1} attempts`);
-    }
-    /**
-     * Add a PR to the queue (concurrency-safe).
-     *
-     * Uses atomicUpdate to ensure that concurrent add operations don't
-     * overwrite each other — each attempt re-reads the latest state.
-     */
-    async addToQueue(pr) {
-        return this.atomicUpdate((state) => {
-            // Check if PR is already in queue
-            if (state.queue.some(q => q.pr_number === pr.pr_number)) {
-                this.logger.warning('PR already in queue', { prNumber: pr.pr_number });
-                return state.queue.findIndex(q => q.pr_number === pr.pr_number) + 1;
-            }
-            // Check if PR is currently being processed
-            if (state.current?.pr_number === pr.pr_number) {
-                this.logger.warning('PR is currently being processed', {
-                    prNumber: pr.pr_number,
-                });
-                return 0; // Position 0 means it's being processed
-            }
-            // Add to queue
-            state.queue.push(pr);
-            // Sort by priority (higher first) then by added_at (earlier first)
-            state.queue.sort((a, b) => {
-                if (a.priority !== b.priority) {
-                    return b.priority - a.priority;
-                }
-                return new Date(a.added_at).getTime() - new Date(b.added_at).getTime();
-            });
-            const position = state.queue.findIndex(q => q.pr_number === pr.pr_number) + 1;
-            this.logger.info('PR added to queue', { prNumber: pr.pr_number, position });
-            return position;
-        });
-    }
-    /**
-     * Remove a PR from the queue (concurrency-safe).
-     */
-    async removeFromQueue(prNumber) {
-        return this.atomicUpdate((state) => {
-            const index = state.queue.findIndex(q => q.pr_number === prNumber);
-            if (index === -1) {
-                this.logger.warning('PR not found in queue', { prNumber });
-                return false;
-            }
-            state.queue.splice(index, 1);
-            this.logger.info('PR removed from queue', { prNumber });
-            return true;
-        });
-    }
-    /**
-     * Get the next PR from the queue
-     */
-    async getNextPR() {
-        const state = await this.readState();
-        if (state.queue.length === 0) {
-            return null;
-        }
-        return state.queue[0];
-    }
-    /**
-     * Set the current PR being processed (concurrency-safe).
-     */
-    async setCurrentPR(current) {
-        await this.atomicUpdate((state) => {
-            state.current = current;
-            this.logger.info('Current PR updated', { current });
-        });
-    }
-    /**
-     * Update current PR status (concurrency-safe).
-     */
-    async updateCurrentStatus(status, updated_at) {
-        await this.atomicUpdate((state) => {
-            if (!state.current) {
-                throw new StateError('No current PR to update');
-            }
-            state.current.status = status;
-            if (updated_at) {
-                state.current.updated_at = updated_at;
-            }
-            this.logger.debug('Current PR status updated', { status });
-        });
-    }
-    /**
-     * Complete processing of current PR and add to history (concurrency-safe).
-     */
-    async completeCurrentPR(entry) {
-        await this.atomicUpdate((state) => {
-            if (!state.current) {
-                throw new StateError('No current PR to complete');
-            }
-            // Remove from queue if still there
-            state.queue = state.queue.filter(q => q.pr_number !== state.current.pr_number);
-            // Add to history
-            state.history.unshift(entry);
-            // Keep only last 100 history entries
-            if (state.history.length > 100) {
-                state.history = state.history.slice(0, 100);
-            }
-            // Update stats
-            state.stats.total_processed++;
-            if (entry.result === 'merged') {
-                state.stats.total_merged++;
-            }
-            else if (entry.result === 'failed' || entry.result === 'conflict') {
-                state.stats.total_failed++;
-            }
-            // Clear current
-            state.current = null;
-            this.logger.info('Current PR completed', { entry });
-        });
-    }
-    /**
-     * Get queue position for a PR
-     */
-    async getQueuePosition(prNumber) {
-        const state = await this.readState();
-        if (state.current?.pr_number === prNumber) {
-            return 0; // Currently being processed
-        }
-        const index = state.queue.findIndex(q => q.pr_number === prNumber);
-        return index === -1 ? null : index + 1;
-    }
-    /**
-     * Validate queue state structure
-     */
-    validateState(state) {
-        if (!state.version || typeof state.version !== 'string') {
-            throw new StateError('Invalid state: missing or invalid version');
-        }
-        if (!state.updated_at || typeof state.updated_at !== 'string') {
-            throw new StateError('Invalid state: missing or invalid updated_at');
-        }
-        if (!Array.isArray(state.queue)) {
-            throw new StateError('Invalid state: queue must be an array');
-        }
-        if (!Array.isArray(state.history)) {
-            throw new StateError('Invalid state: history must be an array');
-        }
-        if (!state.stats || typeof state.stats !== 'object') {
-            throw new StateError('Invalid state: missing or invalid stats');
-        }
-    }
-    /**
-     * Sleep for a specified duration
-     */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 
@@ -32920,9 +32463,8 @@ function getConfig() {
 ;// CONCATENATED MODULE: ./index.ts
 /**
  * Remove from Queue Action
- * Removes a PR from the merge queue
+ * Removes a PR from the merge queue by removing its labels
  */
-
 
 
 
@@ -32936,10 +32478,6 @@ async function run() {
         const token = lib_core.getInput('github-token', { required: true });
         const targetRepo = parseRepository(lib_core.getInput('repository'));
         const prNumber = parseInt(lib_core.getInput('pr-number'), 10);
-        const mergeQueueRepo = {
-            owner: lib_core.getInput('merge-queue-owner'),
-            repo: lib_core.getInput('merge-queue-repo'),
-        };
         const reason = lib_core.getInput('reason') || 'Manual removal';
         const queuedLabel = lib_core.getInput('queued-label');
         const processingLabel = lib_core.getInput('processing-label');
@@ -32951,27 +32489,17 @@ async function run() {
         });
         logger.info('Starting remove-from-queue action', {
             targetRepo: `${targetRepo.owner}/${targetRepo.repo}`,
-            mergeQueueRepo: `${mergeQueueRepo.owner}/${mergeQueueRepo.repo}`,
             prNumber,
             reason,
         });
-        // Initialize API clients
+        // Initialize API client
         const api = new GitHubAPI(token, targetRepo, logger);
-        const stateManager = new QueueStateManager(token, mergeQueueRepo, targetRepo, logger);
-        // Remove from queue
-        const removed = await stateManager.removeFromQueue(prNumber);
-        if (removed) {
-            logger.info('PR removed from queue', { prNumber, reason });
-            // Remove queue-related labels
-            await api.removeLabel(prNumber, queuedLabel);
-            await api.removeLabel(prNumber, processingLabel);
-            await api.removeLabel(prNumber, updatingLabel);
-            lib_core.setOutput('removed', 'true');
-        }
-        else {
-            logger.warning('PR was not in queue', { prNumber });
-            lib_core.setOutput('removed', 'false');
-        }
+        // Remove queue-related labels
+        await api.removeLabel(prNumber, queuedLabel);
+        await api.removeLabel(prNumber, processingLabel);
+        await api.removeLabel(prNumber, updatingLabel);
+        logger.info('PR removed from queue', { prNumber, reason });
+        lib_core.setOutput('removed', 'true');
     }
     catch (error) {
         if (error instanceof Error) {

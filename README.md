@@ -6,28 +6,31 @@ A TypeScript-based GitHub merge queue utility that automatically validates and m
 
 - **Sequential Processing**: Process one PR at a time to ensure each is tested against the latest master
 - **Auto-Update Branches**: Automatically merge master into PR branches when they fall behind
-- **Smart Validation**: Validates approvals, required checks, and merge conflicts
+- **Smart Validation**: Validates required checks, draft state, blocking labels, and merge conflicts
 - **Multi-Repository Support**: Each repository gets its own independent queue
-- **Zero Configuration**: State files auto-created, no manual setup needed
+- **Zero Configuration**: No setup needed — labels are the source of truth
 - **Self-Service**: Add to any repository without modifying the merge-queue codebase
+- **Concurrency-Safe**: Multiple PRs can be labeled "ready" simultaneously without issues
 
 ## How It Works
 
 1. Label a PR with "ready" to add it to the queue
-2. The queue manager validates the PR (approved, checks passing, up-to-date)
+2. The queue manager validates the PR (checks passing, up-to-date)
 3. If the branch is behind master, it automatically merges master into the PR
 4. GitHub automatically re-runs tests after the update
 5. Once tests pass, the PR is automatically merged
 6. The queue moves to the next PR
 
+Queue state is tracked entirely through GitHub labels — the `queued-for-merge` label means a PR is in the queue, and `merge-processing` means it's currently being worked on. No external state files or branches are needed.
+
 ## Architecture
 
 ### Key Components
 
-- **Queue Manager**: Runs every 5 minutes via cron + on push to master
-- **Queue State**: Stored as JSON files in the `merge-queue-state` branch
+- **Queue Manager**: Triggered by workflow_run after add/remove, plus self-dispatch while queue has items
+- **Queue State**: Tracked via GitHub labels (`queued-for-merge`, `merge-processing`)
 - **Custom Actions**: Three reusable GitHub Actions for queue management
-  - `add-to-queue`: Add a PR to the queue
+  - `add-to-queue`: Validate a PR and add it to the queue
   - `process-queue`: Process the next PR in the queue
   - `remove-from-queue`: Remove a PR from the queue
 
@@ -37,7 +40,9 @@ A TypeScript-based GitHub merge queue utility that automatically validates and m
 /src/
   /core/           # Core business logic
     - github-api.ts       # GitHub API wrapper
-    - queue-state.ts      # State management
+    - pr-validator.ts      # PR validation logic
+    - branch-updater.ts    # Branch update logic
+    - merger.ts            # PR merge logic
   /actions/        # GitHub Action definitions
     - add-to-queue/
     - process-queue/
@@ -55,7 +60,7 @@ To add the merge queue to your repository:
 Copy these three workflow files to your repository's `.github/workflows/` directory:
 
 - `merge-queue-entry.yml` - Triggered when "ready" label is added
-- `merge-queue-manager.yml` - Runs every 5 minutes and on push to master
+- `merge-queue-manager.yml` - Triggered after entry/remove workflows + self-dispatch
 - `merge-queue-remove.yml` - Triggered when label is removed or PR is closed
 
 See the [examples/](examples/) directory for templates.
@@ -74,7 +79,7 @@ Add it as a secret in your repository:
 
 Add a PR to the queue by applying the "ready" label. The queue will automatically:
 - Validate the PR
-- Add it to the queue
+- Add the `queued-for-merge` label
 - Process it when its turn comes
 - Merge it when all checks pass
 
@@ -85,7 +90,7 @@ Configure the queue behavior via workflow inputs:
 ```yaml
 with:
   github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
-  queue-label: 'ready'                # Label to trigger queue entry
+  queue-label: 'ready'                # Label that triggers queue entry
   merge-method: 'squash'              # merge, squash, or rebase
   auto-update-branch: true            # Auto-merge master when behind
   update-timeout-minutes: 30          # Max wait time for tests after update
@@ -171,15 +176,6 @@ Target repositories reference actions like:
 uses: your-org/merge-queue@v1/src/actions/add-to-queue
 ```
 
-## State Management
-
-Queue state is stored in the `merge-queue-state` branch with one file per repository:
-
-- Naming pattern: `{owner}-{repo}-queue.json`
-- Auto-created on first use
-- Concurrency-safe via compare-and-swap (CAS) retry loop — multiple PRs can
-  be labeled "ready" simultaneously without losing any updates
-
 ## Error Handling
 
 The queue handles various failure scenarios:
@@ -206,7 +202,6 @@ Standard labels used by the queue:
 - Never commit tokens or secrets
 - Use minimal required permissions for PAT
 - Validate all inputs from GitHub events
-- State files are versioned and validated
 
 ## License
 

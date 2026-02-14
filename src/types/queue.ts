@@ -3,15 +3,6 @@
  */
 
 /**
- * Status of the currently processing PR
- */
-export type ProcessingStatus =
-  | 'validating'
-  | 'updating_branch'
-  | 'waiting_for_tests'
-  | 'merging';
-
-/**
  * Result of a completed PR merge attempt
  */
 export type MergeResult = 'merged' | 'failed' | 'conflict' | 'removed';
@@ -20,59 +11,6 @@ export type MergeResult = 'merged' | 'failed' | 'conflict' | 'removed';
  * GitHub merge methods
  */
 export type MergeMethod = 'merge' | 'squash' | 'rebase';
-
-/**
- * Current PR being processed
- */
-export interface CurrentPR {
-  pr_number: number;
-  status: ProcessingStatus;
-  started_at: string;
-  updated_at: string | null;
-}
-
-/**
- * PR in the queue waiting to be processed
- */
-export interface QueuedPR {
-  pr_number: number;
-  added_at: string;
-  added_by: string;
-  sha: string;
-  priority: number;
-}
-
-/**
- * Historical record of a processed PR
- */
-export interface HistoryEntry {
-  pr_number: number;
-  result: MergeResult;
-  completed_at: string;
-  duration_seconds: number;
-  error_message?: string;
-}
-
-/**
- * Queue statistics
- */
-export interface QueueStats {
-  total_processed: number;
-  total_merged: number;
-  total_failed: number;
-}
-
-/**
- * Complete queue state structure
- */
-export interface QueueState {
-  version: string;
-  updated_at: string;
-  current: CurrentPR | null;
-  queue: QueuedPR[];
-  history: HistoryEntry[];
-  stats: QueueStats;
-}
 
 /**
  * Repository identification

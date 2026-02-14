@@ -18,17 +18,6 @@ inputs:
     required: false
     default: ${{ github.event.pull_request.number }}
 
-  # Merge queue repository (where state is stored)
-  merge-queue-owner:
-    description: 'Owner of the merge-queue repository'
-    required: false
-    default: ${{ github.repository_owner }}
-
-  merge-queue-repo:
-    description: 'Name of the merge-queue repository'
-    required: false
-    default: 'merge-queue'
-
   # Labels
   queued-label:
     description: 'Label applied when PR is in queue'

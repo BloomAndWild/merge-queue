@@ -133,9 +133,11 @@ Or create manually in GitHub UI: Issues → Labels → New label
 ### Check Queue Status
 
 Comments on your PR show:
-- Queue position
+- Whether it was added to the queue
 - Processing status
 - Merge result
+
+You can also check which PRs are queued by searching for the `queued-for-merge` label in your repository.
 
 ## Common Issues
 
@@ -153,7 +155,7 @@ Comments on your PR show:
   add `ignore-checks` to your workflow inputs (see Customization below)
 
 **Permission errors**
-- Verify PAT has access to both repos
+- Verify PAT has access to the repo
 - Check token hasn't expired
 
 ## Default Behavior
@@ -186,16 +188,16 @@ with:
 
 ## Next Steps
 
-- 📖 Read [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) for detailed setup
-- 🏗️ Read [ARCHITECTURE.md](docs/ARCHITECTURE.md) to understand how it works
-- 🧪 Read [TESTING_GUIDE.md](docs/TESTING_GUIDE.md) for testing
-- 🤝 Read [CONTRIBUTING.md](CONTRIBUTING.md) to contribute
+- Read [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) for detailed setup
+- Read [ARCHITECTURE.md](docs/ARCHITECTURE.md) to understand how it works
+- Read [TESTING_GUIDE.md](docs/TESTING_GUIDE.md) for testing
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) to contribute
 
 ## Support
 
-- 📚 [Full Documentation](README.md)
-- 🐛 [Report Issues](https://github.com/YOUR-ORG/merge-queue/issues)
-- 💬 [Discussions](https://github.com/YOUR-ORG/merge-queue/discussions)
+- [Full Documentation](README.md)
+- [Report Issues](https://github.com/YOUR-ORG/merge-queue/issues)
+- [Discussions](https://github.com/YOUR-ORG/merge-queue/discussions)
 
 ## Quick Reference
 
@@ -225,4 +227,4 @@ with:
 
 ---
 
-**Ready to merge automatically? Add the `ready` label!** 🚀
+**Ready to merge automatically? Add the `ready` label!**

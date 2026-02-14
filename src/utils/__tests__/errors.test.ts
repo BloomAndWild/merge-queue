@@ -5,11 +5,9 @@
 import {
   QueueError,
   ValidationError,
-  StateError,
   GitHubAPIError,
   MergeConflictError,
   TimeoutError,
-  ConcurrencyError,
   isGitHubError,
 } from '../errors';
 
@@ -35,15 +33,6 @@ describe('Custom Errors', () => {
       expect(error.message).toBe('Validation failed');
       expect(error.reason).toBe('Missing approvals');
       expect(error.name).toBe('ValidationError');
-      expect(error).toBeInstanceOf(QueueError);
-    });
-  });
-
-  describe('StateError', () => {
-    it('should create a StateError', () => {
-      const error = new StateError('State operation failed');
-      expect(error.message).toBe('State operation failed');
-      expect(error.name).toBe('StateError');
       expect(error).toBeInstanceOf(QueueError);
     });
   });
@@ -80,15 +69,6 @@ describe('Custom Errors', () => {
       expect(error.message).toBe('Operation timed out');
       expect(error.timeoutMs).toBe(30000);
       expect(error.name).toBe('TimeoutError');
-    });
-  });
-
-  describe('ConcurrencyError', () => {
-    it('should create a ConcurrencyError', () => {
-      const error = new ConcurrencyError('State conflict');
-      expect(error.message).toBe('State conflict');
-      expect(error.name).toBe('ConcurrencyError');
-      expect(error).toBeInstanceOf(StateError);
     });
   });
 

@@ -7,10 +7,11 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 ## Key Architecture Principles
 
 1. **Standalone Utility Pattern**: This repo provides reusable GitHub Actions that other repositories reference
-2. **Multi-Repository Support**: Automatically supports any repository without code changes - state files are dynamically created
+2. **Multi-Repository Support**: Automatically supports any repository without code changes
 3. **Sequential Processing**: Process one PR at a time to ensure each is tested against the latest master
 4. **Trust & Auto-Update**: Trust existing PR tests, auto-update branches when behind master
-5. **Zero-Configuration**: State files auto-created, no manual setup needed for new repos
+5. **Zero-Configuration**: No setup needed for new repos — labels are the source of truth
+6. **Label-Based State**: Queue membership is tracked via GitHub labels (no state files or branches)
 
 ## Technology Stack
 
@@ -18,7 +19,7 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 - **Runtime**: Node.js 20.x
 - **GitHub API**: Octokit
 - **Actions**: Custom GitHub Actions (composite actions)
-- **State Storage**: JSON files in `merge-queue-state` branch
+- **State**: GitHub labels (`queued-for-merge`, `merge-processing`, etc.)
 
 ## File Structure
 
@@ -64,8 +65,8 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 ## Important Workflows
 
 ### Queue Flow
-1. PR labeled "ready" → validate → add to queue
-2. Queue manager (cron/push) → process next PR
+1. PR labeled "ready" → validate → add `queued-for-merge` label
+2. Queue manager (workflow_run) → search for PRs with `queued-for-merge` label → process oldest
 3. Validate conditions → update branch if behind → wait for tests → merge
 
 ### Branch Auto-Update Strategy
@@ -76,10 +77,10 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 
 ## State Management
 
-- State stored in `merge-queue-state` branch
-- File naming: `{owner}-{repo}-queue.json`
-- Auto-created on first use per repository
-- Use atomic updates with force-with-lease
+- Queue membership is tracked via the `queued-for-merge` label
+- Currently-processing PR has the `merge-processing` label
+- No state files or state branches — labels are the single source of truth
+- Queue order is determined by PR creation date (oldest first)
 
 ## Common Tasks
 
@@ -96,7 +97,7 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 
 ### Debugging
 - Check GitHub Actions logs in target repositories
-- Examine state files in `merge-queue-state` branch
+- Search for PRs with queue-related labels to see current queue state
 - Use structured logging (logger.ts)
 
 ## Documentation References
@@ -110,7 +111,6 @@ This is a TypeScript-based GitHub merge queue utility that automatically validat
 - Main branch: `main` or `master`
 - Use conventional commits
 - Tag releases for actions: `v1.0.0`, `v1.1.0`, etc.
-- State branch: `merge-queue-state` (managed by actions, don't modify manually)
 
 ## Notes
 

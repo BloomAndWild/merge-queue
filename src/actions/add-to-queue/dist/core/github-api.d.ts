@@ -65,6 +65,13 @@ export declare class GitHubAPI {
      */
     addLabels(prNumber: number, labels: string[]): Promise<void>;
     /**
+     * List open PR numbers that have the given label, sorted by creation date
+     * (oldest first).
+     *
+     * Uses the Issues API with a label filter, then keeps only pull requests.
+     */
+    listPRsWithLabel(label: string): Promise<number[]>;
+    /**
      * Remove a label from a PR
      */
     removeLabel(prNumber: number, label: string): Promise<void>;

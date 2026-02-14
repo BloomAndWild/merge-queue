@@ -1,17 +1,14 @@
 /**
  * Add to Queue Action
- * Validates a PR and adds it to the merge queue
+ * Validates a PR and adds it to the merge queue by applying a label
  */
 
 import * as core from '@actions/core';
-import * as github from '@actions/github';
 import { GitHubAPI } from '../../core/github-api';
-import { QueueStateManager } from '../../core/queue-state';
 import { PRValidator } from '../../core/pr-validator';
 import { createLogger } from '../../utils/logger';
 import { COMMENT_TEMPLATES } from '../../utils/constants';
 import { parseRepository, getConfig } from '../../utils/action-helpers';
-import type { RepositoryInfo, QueuedPR } from '../../types/queue';
 
 /**
  * Main action logic
@@ -22,11 +19,6 @@ async function run(): Promise<void> {
     const token = core.getInput('github-token', { required: true });
     const targetRepo = parseRepository(core.getInput('repository'));
     const prNumber = parseInt(core.getInput('pr-number'), 10);
-    const mergeQueueRepo: RepositoryInfo = {
-      owner: core.getInput('merge-queue-owner'),
-      repo: core.getInput('merge-queue-repo'),
-    };
-    const priority = parseInt(core.getInput('priority') || '0', 10);
     const config = getConfig();
 
     const logger = createLogger({
@@ -37,18 +29,11 @@ async function run(): Promise<void> {
 
     logger.info('Starting add-to-queue action', {
       targetRepo: `${targetRepo.owner}/${targetRepo.repo}`,
-      mergeQueueRepo: `${mergeQueueRepo.owner}/${mergeQueueRepo.repo}`,
       prNumber,
     });
 
-    // Initialize API clients
+    // Initialize API client
     const api = new GitHubAPI(token, targetRepo, logger);
-    const stateManager = new QueueStateManager(
-      token,
-      mergeQueueRepo,
-      targetRepo,
-      logger
-    );
 
     // Validate PR using the shared PRValidator (single source of truth)
     const validator = new PRValidator(api, config, logger);
@@ -80,21 +65,6 @@ async function run(): Promise<void> {
       return;
     }
 
-    // Get PR details for queue entry
-    const pr = await api.getPullRequest(prNumber);
-
-    // Create queue entry
-    const queueEntry: QueuedPR = {
-      pr_number: prNumber,
-      added_at: new Date().toISOString(),
-      added_by: github.context.actor,
-      sha: pr.head.sha,
-      priority,
-    };
-
-    // Add to queue
-    const position = await stateManager.addToQueue(queueEntry);
-
     // Add queued label
     await api.addLabels(prNumber, [config.queuedLabel]);
 
@@ -102,12 +72,11 @@ async function run(): Promise<void> {
     await api.removeLabel(prNumber, config.failedLabel);
     await api.removeLabel(prNumber, config.conflictLabel);
 
-    // Add comment with position
-    await api.addComment(prNumber, COMMENT_TEMPLATES.addedToQueue(position));
+    // Add comment
+    await api.addComment(prNumber, COMMENT_TEMPLATES.addedToQueue);
 
-    logger.info('PR added to queue successfully', { prNumber, position });
+    logger.info('PR added to queue successfully', { prNumber });
 
-    core.setOutput('position', position.toString());
     core.setOutput('valid', 'true');
   } catch (error) {
     if (error instanceof Error) {

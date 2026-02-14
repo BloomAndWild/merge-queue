@@ -42,31 +42,7 @@ If you haven't already:
 
 3. Verify the tag appears on GitHub under Releases
 
-### Step 3: Initialize the State Branch
-
-The state branch will be automatically created when the first repository uses the queue, but you can initialize it manually:
-
-```bash
-# Create orphan branch for state storage
-git checkout --orphan merge-queue-state
-
-# Remove all files
-git rm -rf .
-
-# Create placeholder README
-echo "# Merge Queue State Storage" > README.md
-echo "" >> README.md
-echo "This branch stores queue state files for all repositories." >> README.md
-echo "Files are automatically created and managed by the merge queue actions." >> README.md
-
-# Commit and push
-git add README.md
-git commit -m "Initialize merge-queue-state branch"
-git push origin merge-queue-state
-
-# Return to main branch
-git checkout main
-```
+That's it for the merge-queue repo — no state branch or additional setup needed.
 
 ## Part 2: Target Repository Setup
 
@@ -124,11 +100,8 @@ In your target repository:
 
 3. Update the workflow files:
 
-   Find and replace in all three files:
-   - `your-org` → Your GitHub organization/username
-   - `merge-queue` → Your merge queue repo name (if different)
+   Find and replace `your-org` with your GitHub organization/username:
 
-   Example:
    ```yaml
    # Before
    uses: your-org/merge-queue@v1/src/actions/add-to-queue
@@ -194,8 +167,7 @@ git push origin main
 
 5. Watch for:
    - ✅ `queued-for-merge` label added
-   - ✅ Comment showing queue position
-   - ✅ Queue state file created in merge-queue repo
+   - ✅ Comment confirming addition to queue
 
 ### Test 2: Verify Queue Processing
 
@@ -252,22 +224,6 @@ with:
   update-timeout-minutes: 30  # Increase for slow test suites
 ```
 
-### Advanced: Priority Queue
-
-Add priority to specific PRs:
-
-```yaml
-# In merge-queue-entry.yml, add:
-with:
-  priority: 10  # Higher priority PRs processed first
-```
-
-For dynamic priority based on labels:
-
-```yaml
-priority: ${{ contains(github.event.pull_request.labels.*.name, 'urgent') && '10' || '0' }}
-```
-
 ## Troubleshooting
 
 ### Issue: Workflows don't run
@@ -282,12 +238,11 @@ priority: ${{ contains(github.event.pull_request.labels.*.name, 'urgent') && '10
 
 ### Issue: "Permission denied" errors
 
-**Cause**: PAT doesn't have access to merge-queue repo
+**Cause**: PAT doesn't have sufficient permissions
 
 **Solution**:
-1. Verify PAT has access to both repos
-2. If merge-queue is in different org, ensure PAT has org access
-3. Check token hasn't expired
+1. Verify PAT has access to the repository
+2. Check token hasn't expired
 
 ### Issue: PRs not merging
 
@@ -296,21 +251,8 @@ priority: ${{ contains(github.event.pull_request.labels.*.name, 'urgent') && '10
 **Solution**:
 1. Check PR comments for error details
 2. View Actions logs in target repository
-3. Check queue state file in merge-queue repo
+3. Search for PRs with `queued-for-merge` or `merge-processing` labels to see queue state
 4. Manually trigger queue-manager workflow
-
-### Issue: State file conflicts
-
-**Cause**: Multiple PRs labeled "ready" at the same time trigger concurrent
-state writes.
-
-**Solution**:
-- The built-in compare-and-swap retry loop handles this automatically — on
-  conflict it re-reads the latest state and re-applies the change (up to 5
-  retries with exponential backoff)
-- If a `ConcurrencyError` still appears in logs, it means extremely high
-  contention; try staggering label additions slightly or manually trigger the
-  queue-manager workflow
 
 ### Issue: Tests timeout
 
@@ -324,17 +266,11 @@ state writes.
 
 ### View Queue State
 
-1. Navigate to merge-queue repository
+Search for open PRs with queue labels to see the current state:
 
-2. Switch to `merge-queue-state` branch
-
-3. Open your queue file: `{owner}-{repo}-queue.json`
-
-4. Review:
-   - Current PR being processed
-   - PRs waiting in queue
-   - Recent history
-   - Success/failure stats
+- **Waiting**: PRs with `queued-for-merge` label
+- **Processing**: PRs with `merge-processing` label
+- **Failed**: PRs with `merge-queue-failed` or `merge-queue-conflict` label
 
 ### View Action Logs
 
@@ -343,20 +279,6 @@ state writes.
 2. Select workflow run
 
 3. View logs for debugging
-
-### Queue Statistics
-
-Check `stats` in queue state file:
-
-```json
-{
-  "stats": {
-    "total_processed": 42,
-    "total_merged": 38,
-    "total_failed": 4
-  }
-}
-```
 
 ## Maintenance
 

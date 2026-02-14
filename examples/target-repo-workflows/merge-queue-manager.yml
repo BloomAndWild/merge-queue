@@ -1,15 +1,12 @@
 name: Merge Queue Manager
 
 on:
-  # Run immediately after a PR is added to or removed from the queue
+  # Trigger after entry/remove workflows complete
   workflow_run:
     workflows: ["Merge Queue Entry", "Merge Queue Remove"]
     types: [completed]
 
-  # Allow manual trigger
-  workflow_dispatch:
-
-# Ensure only one queue processor runs at a time
+# Only one PR should be processed at a time
 concurrency:
   group: merge-queue-processor
   cancel-in-progress: false
@@ -20,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Process next PR in queue
+      - name: Process next PR
         id: process
         uses: your-org/merge-queue@v1/src/actions/process-queue
         with:
@@ -30,11 +27,7 @@ jobs:
           # Repository info (auto-detected)
           repository: ${{ github.repository }}
 
-          # Merge queue repository location
-          merge-queue-owner: your-org
-          merge-queue-repo: merge-queue
-
-          # Queue configuration (must match add-to-queue)
+          # Queue configuration
           queue-label: ready
           failed-label: merge-queue-failed
           conflict-label: merge-queue-conflict
@@ -42,7 +35,7 @@ jobs:
           updating-label: merge-updating
           queued-label: queued-for-merge
 
-          # Validation requirements (must match add-to-queue)
+          # Validation requirements
           require-all-checks: true
           allow-draft: false
           block-labels: do-not-merge,wip
@@ -56,7 +49,8 @@ jobs:
           merge-method: squash
           delete-branch-after-merge: true
 
-      # If we processed a PR, re-trigger to drain the queue
+      # Self-dispatch: if a PR was processed, trigger another run to process the
+      # next one in the queue.
       - name: Process next in queue
         if: steps.process.outputs.processed == 'true'
         env:

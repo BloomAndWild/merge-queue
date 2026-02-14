@@ -1,36 +1,33 @@
 /**
  * Process Queue Action
- * Main queue processor that validates, updates, and merges PRs
+ * Main queue processor that validates, updates, and merges PRs.
+ *
+ * Uses GitHub labels as the source of truth instead of a state file:
+ * - `queued-for-merge` label = PR is waiting in the queue
+ * - `merge-processing` label = PR is currently being processed
  */
 
 import * as core from '@actions/core';
 import { GitHubAPI } from '../../core/github-api';
-import { QueueStateManager } from '../../core/queue-state';
 import { PRValidator } from '../../core/pr-validator';
 import { BranchUpdater } from '../../core/branch-updater';
 import { createLogger } from '../../utils/logger';
 import { COMMENT_TEMPLATES } from '../../utils/constants';
 import type { ProcessingStep } from '../../utils/constants';
 import { parseRepository, getConfig } from '../../utils/action-helpers';
-import type {
-  RepositoryInfo,
-  HistoryEntry,
-  MergeResult,
-} from '../../types/queue';
+import type { MergeResult } from '../../types/queue';
 
 /**
  * Process a single PR from the queue
  */
 async function processPR(
   api: GitHubAPI,
-  stateManager: QueueStateManager,
   validator: PRValidator,
   updater: BranchUpdater,
   prNumber: number,
   config: ReturnType<typeof getConfig>,
   logger: ReturnType<typeof createLogger>
 ): Promise<MergeResult> {
-  const startTime = Date.now();
   let result: MergeResult = 'failed';
   const steps: ProcessingStep[] = [];
   let summaryTitle = 'Removed from Queue';
@@ -38,15 +35,7 @@ async function processPR(
   try {
     logger.info('Processing PR', { prNumber });
 
-    // Set as current PR
-    await stateManager.setCurrentPR({
-      pr_number: prNumber,
-      status: 'validating',
-      started_at: new Date().toISOString(),
-      updated_at: null,
-    });
-
-    // Add processing label
+    // Add processing label, remove queued label
     await api.addLabels(prNumber, [config.processingLabel]);
     await api.removeLabel(prNumber, config.queuedLabel);
 
@@ -84,12 +73,6 @@ async function processPR(
       config.autoUpdateBranch
     ) {
       logger.info('PR branch is behind, updating...', { prNumber });
-
-      // Update status
-      await stateManager.updateCurrentStatus(
-        'updating_branch',
-        new Date().toISOString()
-      );
 
       // Add updating label
       await api.addLabels(prNumber, [config.updatingLabel]);
@@ -153,8 +136,6 @@ async function processPR(
 
     // Merge the PR
     logger.info('Merging PR', { prNumber, method: config.mergeMethod });
-
-    await stateManager.updateCurrentStatus('merging');
 
     const pr = await api.getPullRequest(prNumber);
     const mergeCommitSha = await api.mergePullRequest(
@@ -220,24 +201,6 @@ async function processPR(
         { prNumber }
       );
     }
-
-    // Record in history — wrapped so history errors don't mask earlier ones
-    try {
-      const duration = Math.round((Date.now() - startTime) / 1000);
-
-      const historyEntry: HistoryEntry = {
-        pr_number: prNumber,
-        result,
-        completed_at: new Date().toISOString(),
-        duration_seconds: duration,
-      };
-
-      await stateManager.completeCurrentPR(historyEntry);
-    } catch (historyError) {
-      logger.error('Failed to record history entry', historyError as Error, {
-        prNumber,
-      });
-    }
   }
 }
 
@@ -249,10 +212,6 @@ async function run(): Promise<void> {
     // Get inputs
     const token = core.getInput('github-token', { required: true });
     const targetRepo = parseRepository(core.getInput('repository'));
-    const mergeQueueRepo: RepositoryInfo = {
-      owner: core.getInput('merge-queue-owner'),
-      repo: core.getInput('merge-queue-repo'),
-    };
     const config = getConfig();
 
     const logger = createLogger({
@@ -262,60 +221,60 @@ async function run(): Promise<void> {
 
     logger.info('Starting process-queue action', {
       targetRepo: `${targetRepo.owner}/${targetRepo.repo}`,
-      mergeQueueRepo: `${mergeQueueRepo.owner}/${mergeQueueRepo.repo}`,
     });
 
     // Initialize clients
     const api = new GitHubAPI(token, targetRepo, logger);
-    const stateManager = new QueueStateManager(
-      token,
-      mergeQueueRepo,
-      targetRepo,
-      logger
-    );
     const validator = new PRValidator(api, config, logger);
     const updater = new BranchUpdater(api, validator, config, logger);
 
-    // Get next PR from queue
-    const nextPR = await stateManager.getNextPR();
+    // Check if a PR is already being processed (resume after crash)
+    const processingPRs = await api.listPRsWithLabel(config.processingLabel);
+    let prNumber: number | undefined;
 
-    if (!nextPR) {
-      logger.info('Queue is empty, nothing to process');
-      core.setOutput('processed', 'false');
-      core.setOutput('result', 'none');
-      return;
+    if (processingPRs.length > 0) {
+      prNumber = processingPRs[0];
+      logger.info('Resuming previously processing PR', { prNumber });
+    } else {
+      // Get next PR from queue (oldest first)
+      const queuedPRs = await api.listPRsWithLabel(config.queuedLabel);
+
+      if (queuedPRs.length === 0) {
+        logger.info('Queue is empty, nothing to process');
+        core.setOutput('processed', 'false');
+        core.setOutput('result', 'none');
+        return;
+      }
+
+      prNumber = queuedPRs[0];
+      logger.info('Found PR in queue', { prNumber });
     }
-
-    logger.info('Found PR in queue', {
-      prNumber: nextPR.pr_number,
-      addedAt: nextPR.added_at,
-    });
 
     // Check if PR still exists and is open
     try {
-      const pr = await api.getPullRequest(nextPR.pr_number);
+      const pr = await api.getPullRequest(prNumber);
       if (pr.state !== 'open') {
         logger.warning('PR is no longer open, removing from queue', {
-          prNumber: nextPR.pr_number,
+          prNumber,
           state: pr.state,
         });
 
-        await stateManager.removeFromQueue(nextPR.pr_number);
+        await api.removeLabel(prNumber, config.queuedLabel);
+        await api.removeLabel(prNumber, config.processingLabel);
 
         core.setOutput('processed', 'false');
-        core.setOutput('pr-number', nextPR.pr_number.toString());
+        core.setOutput('pr-number', prNumber.toString());
         core.setOutput('result', 'removed');
         return;
       }
     } catch (_error) {
-      logger.warning('PR not found, removing from queue', {
-        prNumber: nextPR.pr_number,
-      });
+      logger.warning('PR not found, cleaning up labels', { prNumber });
 
-      await stateManager.removeFromQueue(nextPR.pr_number);
+      await api.removeLabel(prNumber, config.queuedLabel);
+      await api.removeLabel(prNumber, config.processingLabel);
 
       core.setOutput('processed', 'false');
-      core.setOutput('pr-number', nextPR.pr_number.toString());
+      core.setOutput('pr-number', prNumber.toString());
       core.setOutput('result', 'removed');
       return;
     }
@@ -323,21 +282,20 @@ async function run(): Promise<void> {
     // Process the PR
     const result = await processPR(
       api,
-      stateManager,
       validator,
       updater,
-      nextPR.pr_number,
+      prNumber,
       config,
       logger
     );
 
     logger.info('PR processing complete', {
-      prNumber: nextPR.pr_number,
+      prNumber,
       result,
     });
 
     core.setOutput('processed', 'true');
-    core.setOutput('pr-number', nextPR.pr_number.toString());
+    core.setOutput('pr-number', prNumber.toString());
     core.setOutput('result', result);
   } catch (error) {
     if (error instanceof Error) {

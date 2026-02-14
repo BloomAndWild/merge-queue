@@ -19,15 +19,15 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 
 ### 3. Multi-Repository Support
 - Each repository gets its own independent queue
-- State files are automatically created based on repository name
 - Zero configuration needed when adding new repositories
 - Self-service model - no changes to merge-queue repo required
 
-### 4. Git-Based State Management
-- Queue state stored as JSON files in `merge-queue-state` branch
-- Atomic updates with conflict detection
-- Versioned and auditable
-- No external dependencies required
+### 4. Label-Based State
+- Queue membership tracked via GitHub labels — no external state files
+- `queued-for-merge` label = PR is in the queue
+- `merge-processing` label = PR is currently being processed
+- Queue order determined by PR creation date (oldest first)
+- Inherently concurrency-safe — no read-modify-write races
 
 ## Component Architecture
 
@@ -37,7 +37,7 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 │                                                              │
 │  ┌────────────────┐  ┌────────────────┐  ┌───────────────┐ │
 │  │ queue-entry.yml│  │queue-manager   │  │queue-remove   │ │
-│  │  (on: labeled) │  │  (on: schedule)│  │  (on: labeled)│ │
+│  │  (on: labeled) │  │(workflow_run)  │  │(on: unlabeled)│ │
 │  └────────┬───────┘  └───────┬────────┘  └───────┬───────┘ │
 │           │                  │                    │          │
 └───────────┼──────────────────┼────────────────────┼──────────┘
@@ -57,12 +57,8 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 │              │   Core Modules         │                      │
 │              │                        │                      │
 │              │  ┌──────────────────┐  │                      │
-│              │  │ QueueStateManager│  │                      │
-│              │  │  (State CRUD)    │  │                      │
-│              │  └──────────────────┘  │                      │
-│              │  ┌──────────────────┐  │                      │
 │              │  │   GitHubAPI      │  │                      │
-│              │  │ (API Wrapper)    │  │                      │
+│              │  │ (API + Labels)   │  │                      │
 │              │  └──────────────────┘  │                      │
 │              │  ┌──────────────────┐  │                      │
 │              │  │  PRValidator     │  │                      │
@@ -76,15 +72,6 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 │              │  │   PRMerger       │  │                      │
 │              │  │ (Merge Logic)    │  │                      │
 │              │  └──────────────────┘  │                      │
-│              └────────────────────────┘                      │
-│                           │                                  │
-│              ┌────────────▼───────────┐                      │
-│              │  merge-queue-state     │                      │
-│              │       branch           │                      │
-│              │                        │                      │
-│              │  owner1-repo1-queue.json                      │
-│              │  owner1-repo2-queue.json                      │
-│              │  owner2-repo3-queue.json                      │
 │              └────────────────────────┘                      │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -103,9 +90,8 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
    - No blocking labels?
    - No merge conflicts?
 5. If valid:
-   - Add to queue state
    - Add "queued-for-merge" label
-   - Post comment with queue position
+   - Post comment confirming addition
 6. If invalid:
    - Add "merge-queue-failed" label
    - Post comment with failure reason
@@ -114,28 +100,27 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 ### Processing the Queue
 
 ```
-1. queue-manager.yml runs (every 5 min + on push to master)
+1. queue-manager.yml runs (after entry/remove + self-dispatch)
 2. process-queue action called
-3. QueueStateManager.getNextPR() → Get first PR in queue
-4. If no PR, exit
-5. Set PR as current in state
-6. PRValidator.validate() → Re-validate PR
-7. If validation fails:
-   - Remove from queue
-   - Add failure label
+3. Search for PRs with "merge-processing" label (resume after crash)
+4. If none, search for PRs with "queued-for-merge" label (oldest first)
+5. If no PR, exit
+6. Add "merge-processing" label, remove "queued-for-merge"
+7. PRValidator.validate() → Re-validate PR
+8. If validation fails:
+   - Remove processing label, add failure label
    - Post comment
-   - Move to next PR
-8. If valid but behind master:
+9. If valid but behind master:
    - BranchUpdater.updateIfBehind()
    - Merge master into PR branch
    - Wait for tests to complete
-   - If tests fail: Remove from queue
-9. If all checks pass:
-   - PRMerger.merge() → Merge PR
-   - Delete branch (if configured)
-   - Update state with success
-   - Post success comment
-10. Process next PR in queue
+   - If tests fail: remove from queue
+10. If all checks pass:
+    - Merge PR
+    - Delete branch (if configured)
+    - Remove processing label
+    - Post success comment
+11. Self-dispatch to process next PR
 ```
 
 ### Removing from Queue
@@ -144,86 +129,37 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 1. User removes "ready" label OR closes PR
 2. queue-remove.yml workflow triggered
 3. remove-from-queue action called
-4. Remove PR from queue state
-5. Remove queue-related labels
+4. Remove queue-related labels (queued-for-merge, merge-processing, merge-updating)
 ```
 
 ## State Management
 
-### State File Structure
+Queue state is tracked entirely through GitHub labels on the target repository's
+pull requests. There are no state files or state branches.
 
-Each repository has its own state file in the `merge-queue-state` branch:
+| Label | Meaning |
+|-------|---------|
+| `queued-for-merge` | PR is waiting in the queue |
+| `merge-processing` | PR is currently being processed |
+| `merge-updating` | PR branch is being updated with master |
 
-**File name pattern:** `{owner}-{repo}-queue.json`
+### Queue Order
 
-**Example:** `bloomandwild-bloomandwild-queue.json`
+PRs are processed in **creation date order** (oldest first). The `process-queue`
+action calls `GitHubAPI.listPRsWithLabel('queued-for-merge')` which uses the
+GitHub Issues API sorted by `created` ascending.
 
-```json
-{
-  "version": "1.0.0",
-  "updated_at": "2024-01-15T10:30:00Z",
-  "current": {
-    "pr_number": 123,
-    "status": "merging",
-    "started_at": "2024-01-15T10:25:00Z",
-    "updated_at": "2024-01-15T10:28:00Z"
-  },
-  "queue": [
-    {
-      "pr_number": 124,
-      "added_at": "2024-01-15T10:20:00Z",
-      "added_by": "alice",
-      "sha": "abc123",
-      "priority": 0
-    }
-  ],
-  "history": [
-    {
-      "pr_number": 122,
-      "result": "merged",
-      "completed_at": "2024-01-15T10:24:00Z",
-      "duration_seconds": 180
-    }
-  ],
-  "stats": {
-    "total_processed": 42,
-    "total_merged": 38,
-    "total_failed": 4
-  }
-}
-```
+### Concurrency
 
-### Concurrency Control
+The add-to-queue and remove-from-queue workflows have **no concurrency groups**.
+Multiple PRs can be labeled "ready" simultaneously — each workflow run
+independently adds or removes labels without conflicting.
 
-The merge queue uses a **compare-and-swap (CAS)** strategy to safely handle
-concurrent state mutations (e.g. multiple PRs labeled "ready" at the same time).
+The process-queue workflow uses a concurrency group (`merge-queue-processor`)
+because only one PR should be processed at a time by design.
 
-**How it works:**
-
-1. Every mutating operation (`addToQueue`, `removeFromQueue`, etc.) runs
-   inside `QueueStateManager.atomicUpdate()`.
-2. `atomicUpdate` reads the latest state from the `merge-queue-state` branch.
-3. The caller's mutation is applied to the in-memory state.
-4. The state is written back using GitHub's `createOrUpdateFileContents` API,
-   which requires the current file SHA — acting as an optimistic lock.
-5. If another process wrote to the state between step 2 and step 4, GitHub
-   returns a **409 Conflict**. The loop then re-reads the fresh state,
-   re-applies the mutation, and retries.
-6. Retries use **exponential backoff with jitter** (1 s, 2 s, 4 s, …) to
-   avoid thundering-herd collisions. Up to 5 retries are attempted before
-   raising a `ConcurrencyError`.
-
-**Why no workflow concurrency groups?**
-
-The add-to-queue and remove-from-queue workflows intentionally do **not** use
-GitHub Actions concurrency groups. GitHub only keeps one running + one pending
-job per group — any additional pending runs are silently cancelled. This meant
-labeling 3 PRs at once would drop at least one. The CAS retry loop makes
-concurrency groups unnecessary for correctness and avoids this limitation.
-
-The process-queue workflow still uses a concurrency group
-(`merge-queue-processor`) because only one PR should be processed at a time
-by design.
+If a `merge-processing` label is found when process-queue starts, it means a
+previous run was interrupted. The action resumes by re-processing that PR.
 
 ## Security Model
 
@@ -231,15 +167,13 @@ by design.
 
 - Uses Personal Access Token (PAT) or GitHub App
 - Stored as `MERGE_QUEUE_TOKEN` secret in target repositories
-- Requires cross-repo access:
-  - Target repo: Read PRs, write comments/labels, merge
-  - Merge-queue repo: Read/write to state branch
+- Requires access to the target repository for reading PRs, writing comments/labels, and merging
 
 ### Permissions Required
 
 ```yaml
 permissions:
-  contents: write      # Update state branch, merge PRs
+  contents: write      # Merge PRs
   pull-requests: write # Comment, label, merge PRs
   actions: read        # Check workflow status
   checks: read         # Validate PR checks
@@ -248,8 +182,7 @@ permissions:
 ### Validation
 
 - All inputs validated and sanitized
-- PR approvals verified before merge
-- State structure validated on read/write
+- PR approvals enforced via GitHub branch protection
 - No bypass of approval requirements possible
 
 ## Error Handling
@@ -273,7 +206,7 @@ permissions:
 
 4. **Transient Errors** (API failures, network issues)
    - Retry with exponential backoff
-   - Up to 5 attempts for state conflicts, 3 for API calls
+   - Up to 3 attempts
    - If still failing, treat as validation failure
 
 5. **Timeouts** (Tests don't complete)
@@ -282,10 +215,9 @@ permissions:
 
 ### Recovery Mechanisms
 
-- State validation on every read
-- Automatic state file creation for new repos
 - Graceful handling of deleted/closed PRs
-- Idempotent operations (can safely retry)
+- Stale `merge-processing` label detected and resumed on next run
+- Idempotent label operations (removing a missing label is a no-op)
 
 ## Scalability Considerations
 
@@ -303,8 +235,7 @@ permissions:
 
 ### Future Optimizations
 
-- Parallel testing (test multiple PRs simultaneously)
-- Priority queues (high/normal/low priority)
+- Priority via labels (e.g. `priority-high`)
 - Batch merging (merge compatible PRs together)
 - Predictive branch updates (update before PR's turn)
 
@@ -374,14 +305,14 @@ See [../claude-plan.md](../claude-plan.md) for comprehensive checklist
 
 1. Create merge-queue repository on GitHub
 2. Push code and tag release (v1.0.0)
-3. Initialize `merge-queue-state` branch
 
 ### Adding to Target Repository
 
 1. Copy 3 workflow files to `.github/workflows/`
 2. Configure `MERGE_QUEUE_TOKEN` secret
-3. Customize workflow inputs (optional)
-4. Add "ready" label to PR to test
+3. Create required labels
+4. Customize workflow inputs (optional)
+5. Add "ready" label to PR to test
 
 ### Updating
 
@@ -394,21 +325,13 @@ See [../claude-plan.md](../claude-plan.md) for comprehensive checklist
 
 ## Monitoring
 
-### Metrics to Track
-
-- Average queue wait time
-- Merge success rate
-- Failure reasons distribution
-- Queue length over time
-
 ### Available Data
 
-- State files contain history and stats
 - GitHub Actions logs for detailed debugging
 - PR comments provide audit trail
+- Search for PRs with queue labels to see current queue state
 
 ### Alerts
 
 - Long queue wait times (>1 hour)
 - High failure rates (>20%)
-- State corruption (validation errors)

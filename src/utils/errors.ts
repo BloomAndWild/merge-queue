@@ -24,16 +24,6 @@ export class ValidationError extends QueueError {
 }
 
 /**
- * Error when state operations fail
- */
-export class StateError extends QueueError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'StateError';
-  }
-}
-
-/**
  * Error when GitHub API operations fail
  */
 export class GitHubAPIError extends QueueError {
@@ -64,16 +54,6 @@ export class TimeoutError extends QueueError {
   constructor(message: string, public timeoutMs: number) {
     super(message);
     this.name = 'TimeoutError';
-  }
-}
-
-/**
- * Error when concurrent state updates conflict
- */
-export class ConcurrencyError extends StateError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConcurrencyError';
   }
 }
 

@@ -2,14 +2,6 @@
  * Constants used throughout the merge queue system
  */
 /**
- * Name of the branch that stores queue state
- */
-export declare const STATE_BRANCH = "merge-queue-state";
-/**
- * Current version of the queue state schema
- */
-export declare const QUEUE_VERSION = "1.0.0";
-/**
  * Default queue configuration
  */
 export declare const DEFAULT_CONFIG: {
@@ -57,7 +49,7 @@ export interface ProcessingStep {
  * Comment templates for PR communication
  */
 export declare const COMMENT_TEMPLATES: {
-    addedToQueue: (position: number) => string;
+    addedToQueue: string;
     removedChecksFailure: (details: string) => string;
     positionUpdate: (position: number) => string;
     /**

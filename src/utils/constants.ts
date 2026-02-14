@@ -3,16 +3,6 @@
  */
 
 /**
- * Name of the branch that stores queue state
- */
-export const STATE_BRANCH = 'merge-queue-state';
-
-/**
- * Current version of the queue state schema
- */
-export const QUEUE_VERSION = '1.0.0';
-
-/**
  * Default queue configuration
  */
 export const DEFAULT_CONFIG = {
@@ -64,8 +54,7 @@ export interface ProcessingStep {
  * Comment templates for PR communication
  */
 export const COMMENT_TEMPLATES = {
-  addedToQueue: (position: number) =>
-    `✅ Added to merge queue at position ${position}`,
+  addedToQueue: '✅ Added to merge queue',
 
   removedChecksFailure: (details: string) =>
     `❌ Removed from queue: checks no longer passing\n\n${details}`,

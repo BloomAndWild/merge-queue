@@ -22,10 +22,6 @@ jobs:
           repository: ${{ github.repository }}
           pr-number: ${{ github.event.pull_request.number }}
 
-          # Merge queue repository location
-          merge-queue-owner: your-org
-          merge-queue-repo: merge-queue
-
           # Queue configuration
           queue-label: ready
           failed-label: merge-queue-failed
@@ -47,6 +43,3 @@ jobs:
           # Merge configuration
           merge-method: squash
           delete-branch-after-merge: true
-
-          # Priority (optional, default 0)
-          priority: 0

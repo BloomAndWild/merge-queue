@@ -18,17 +18,6 @@ inputs:
     required: false
     default: ${{ github.event.pull_request.number }}
 
-  # Merge queue repository (where state is stored)
-  merge-queue-owner:
-    description: 'Owner of the merge-queue repository'
-    required: false
-    default: ${{ github.repository_owner }}
-
-  merge-queue-repo:
-    description: 'Name of the merge-queue repository'
-    required: false
-    default: 'merge-queue'
-
   # Queue configuration
   queue-label:
     description: 'Label that triggers queue entry'
@@ -103,16 +92,7 @@ inputs:
     required: false
     default: 'true'
 
-  # Priority
-  priority:
-    description: 'Queue priority (higher = processed first)'
-    required: false
-    default: '0'
-
 outputs:
-  position:
-    description: 'Position in queue (0 if currently processing)'
-
   valid:
     description: 'Whether PR passed validation'
 
