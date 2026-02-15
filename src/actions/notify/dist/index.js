@@ -31881,15 +31881,6 @@ class GitHubAPIError extends QueueError {
     }
 }
 /**
- * Error when merge conflicts are detected
- */
-class MergeConflictError extends QueueError {
-    constructor(message) {
-        super(message);
-        this.name = 'MergeConflictError';
-    }
-}
-/**
  * Error when operations timeout
  */
 class TimeoutError extends QueueError {
@@ -32109,7 +32100,11 @@ class GitHubAPI {
         }
     }
     /**
-     * Get combined status for a commit
+     * Get combined status for a commit.
+     *
+     * Fetches both check-runs and commit-statuses (first page only).
+     * Logs a warning when the response size equals the default page limit,
+     * which may indicate truncated results.
      */
     async getCommitStatus(ref) {
         this.logger.debug('Fetching commit status', { ref });
@@ -32120,6 +32115,13 @@ class GitHubAPI {
                 repo: this.repo.repo,
                 ref,
             });
+            if (checkRuns.total_count > checkRuns.check_runs.length) {
+                this.logger.warning('Check runs response may be truncated', {
+                    ref,
+                    returned: checkRuns.check_runs.length,
+                    total: checkRuns.total_count,
+                });
+            }
             // Get commit statuses
             const { data: statuses } = await this.octokit.rest.repos.getCombinedStatusForRef({
                 owner: this.repo.owner,
@@ -32212,8 +32214,7 @@ class GitHubAPI {
             const statusCode = isGitHubError(error) ? error.status : undefined;
             const errorMessage = error instanceof Error ? error.message : String(error);
             // 409 or message containing "conflict" → merge conflict
-            if (isGitHubError(error) &&
-                (error.status === 409 || error.message?.includes('conflict'))) {
+            if (isGitHubError(error) && (error.status === 409 || error.message?.includes('conflict'))) {
                 this.logger.warning('Merge conflict detected during branch update', {
                     prNumber,
                     statusCode,
@@ -32358,9 +32359,12 @@ class GitHubAPI {
      * (oldest first).
      *
      * Uses the Issues API with a label filter, then keeps only pull requests.
+     * Fetches up to 100 results (first page). Logs a warning when the
+     * response is full, which may indicate additional results exist.
      */
     async listPRsWithLabel(label) {
         this.logger.debug('Listing PRs with label', { label });
+        const perPage = 100;
         try {
             const { data } = await this.octokit.rest.issues.listForRepo({
                 owner: this.repo.owner,
@@ -32369,12 +32373,13 @@ class GitHubAPI {
                 state: 'open',
                 sort: 'created',
                 direction: 'asc',
-                per_page: 100,
+                per_page: perPage,
             });
+            if (data.length >= perPage) {
+                this.logger.warning('listPRsWithLabel response may be truncated — results equal page size', { label, count: data.length, perPage });
+            }
             // issues.listForRepo returns both issues and PRs — keep only PRs
-            const prNumbers = data
-                .filter(issue => issue.pull_request != null)
-                .map(issue => issue.number);
+            const prNumbers = data.filter(issue => issue.pull_request != null).map(issue => issue.number);
             this.logger.debug('Found PRs with label', { label, count: prNumbers.length, prNumbers });
             return prNumbers;
         }
@@ -32504,12 +32509,19 @@ function buildSlackPayload(params) {
  * but not let them block the workflow.
  */
 async function sendSlackNotification(webhookUrl, payload) {
-    const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    return response.ok;
+    try {
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        return response.ok;
+    }
+    catch {
+        // Network errors (DNS failure, connection refused, etc.)
+        // Return false to honour the "never throws" contract.
+        return false;
+    }
 }
 
 ;// CONCATENATED MODULE: ../../utils/action-helpers.ts
@@ -32519,14 +32531,26 @@ async function sendSlackNotification(webhookUrl, payload) {
 
 const VALID_MERGE_METHODS = (/* unused pure expression or super */ null && (['merge', 'squash', 'rebase']));
 /**
- * Parse a repository string in "owner/repo" format into a RepositoryInfo object
+ * Parse a repository string in "owner/repo" format into a RepositoryInfo object.
+ * Rejects strings with more or fewer than exactly one slash.
  */
 function parseRepository(repoString) {
-    const [owner, repo] = repoString.split('/');
-    if (!owner || !repo) {
+    const parts = repoString.split('/');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
         throw new Error(`Invalid repository format: "${repoString}". Expected "owner/repo".`);
     }
-    return { owner, repo };
+    return { owner: parts[0], repo: parts[1] };
+}
+/**
+ * Parse and validate a PR number string.
+ * Throws if the value is not a positive integer.
+ */
+function parsePRNumber(input) {
+    const prNumber = parseInt(input, 10);
+    if (isNaN(prNumber) || prNumber <= 0) {
+        throw new Error(`Invalid pr-number: "${input}". Must be a positive integer.`);
+    }
+    return prNumber;
 }
 /**
  * Build a QueueConfig from GitHub Action inputs.
@@ -32592,7 +32616,7 @@ async function run() {
         const webhookUrl = lib_core.getInput('slack-webhook-url', { required: true });
         const token = lib_core.getInput('github-token', { required: true });
         const targetRepo = parseRepository(lib_core.getInput('repository'));
-        const prNumber = parseInt(lib_core.getInput('pr-number'), 10);
+        const prNumber = parsePRNumber(lib_core.getInput('pr-number'));
         const result = lib_core.getInput('result');
         const logger = createLogger({
             action: 'notify',

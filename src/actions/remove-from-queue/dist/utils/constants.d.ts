@@ -1,6 +1,8 @@
 /**
  * Constants used throughout the merge queue system
  */
+import type { ProcessingStep } from '../types/queue';
+export type { ProcessingStep } from '../types/queue';
 /**
  * Default queue configuration
  */
@@ -21,15 +23,6 @@ export declare const DEFAULT_CONFIG: {
     ignoreChecks: string[];
 };
 /**
- * Retry configuration for API calls
- */
-export declare const RETRY_CONFIG: {
-    maxRetries: number;
-    initialDelayMs: number;
-    maxDelayMs: number;
-    backoffMultiplier: number;
-};
-/**
  * Timeout configurations (in milliseconds)
  */
 export declare const TIMEOUTS: {
@@ -37,14 +30,6 @@ export declare const TIMEOUTS: {
     maxTestWaitMs: number;
     apiTimeoutMs: number;
 };
-/**
- * A single step recorded during queue processing, used to build summary comments
- */
-export interface ProcessingStep {
-    label: string;
-    status: 'success' | 'failure';
-    detail?: string;
-}
 /**
  * Comment templates for PR communication
  */

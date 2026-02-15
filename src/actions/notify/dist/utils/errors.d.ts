@@ -23,12 +23,6 @@ export declare class GitHubAPIError extends QueueError {
     constructor(message: string, statusCode?: number | undefined, response?: unknown | undefined);
 }
 /**
- * Error when merge conflicts are detected
- */
-export declare class MergeConflictError extends QueueError {
-    constructor(message: string);
-}
-/**
  * Error when operations timeout
  */
 export declare class TimeoutError extends QueueError {

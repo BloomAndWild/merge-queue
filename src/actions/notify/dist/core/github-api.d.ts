@@ -23,7 +23,11 @@ export declare class GitHubAPI {
      */
     getPRReviews(prNumber: number): Promise<Review[]>;
     /**
-     * Get combined status for a commit
+     * Get combined status for a commit.
+     *
+     * Fetches both check-runs and commit-statuses (first page only).
+     * Logs a warning when the response size equals the default page limit,
+     * which may indicate truncated results.
      */
     getCommitStatus(ref: string): Promise<CheckStatus[]>;
     /**
@@ -69,6 +73,8 @@ export declare class GitHubAPI {
      * (oldest first).
      *
      * Uses the Issues API with a label filter, then keeps only pull requests.
+     * Fetches up to 100 results (first page). Logs a warning when the
+     * response is full, which may indicate additional results exist.
      */
     listPRsWithLabel(label: string): Promise<number[]>;
     /**
