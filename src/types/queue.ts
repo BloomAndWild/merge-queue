@@ -74,3 +74,12 @@ export interface UpdateResult {
   sha?: string;
   error?: string;
 }
+
+/**
+ * A single step recorded during queue processing, used to build summary comments
+ */
+export interface ProcessingStep {
+  label: string;
+  status: 'success' | 'failure';
+  detail?: string;
+}

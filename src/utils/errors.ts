@@ -17,7 +17,10 @@ export class QueueError extends Error {
  * Error when PR validation fails
  */
 export class ValidationError extends QueueError {
-  constructor(message: string, public reason: string) {
+  constructor(
+    message: string,
+    public reason: string
+  ) {
     super(message);
     this.name = 'ValidationError';
   }
@@ -38,20 +41,13 @@ export class GitHubAPIError extends QueueError {
 }
 
 /**
- * Error when merge conflicts are detected
- */
-export class MergeConflictError extends QueueError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'MergeConflictError';
-  }
-}
-
-/**
  * Error when operations timeout
  */
 export class TimeoutError extends QueueError {
-  constructor(message: string, public timeoutMs: number) {
+  constructor(
+    message: string,
+    public timeoutMs: number
+  ) {
     super(message);
     this.name = 'TimeoutError';
   }
@@ -61,9 +57,7 @@ export class TimeoutError extends QueueError {
  * Type guard for errors returned by the GitHub/Octokit API.
  * These errors carry a numeric `status` property (HTTP status code).
  */
-export function isGitHubError(
-  error: unknown
-): error is { status: number; message: string } {
+export function isGitHubError(error: unknown): error is { status: number; message: string } {
   return (
     typeof error === 'object' &&
     error !== null &&

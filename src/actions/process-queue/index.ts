@@ -67,11 +67,7 @@ async function processPR(
     steps.push({ label: 'Validation passed', status: 'success' });
 
     // Check if branch needs updating
-    if (
-      validation.checks &&
-      !validation.checks.upToDate &&
-      config.autoUpdateBranch
-    ) {
+    if (validation.checks && !validation.checks.upToDate && config.autoUpdateBranch) {
       logger.info('PR branch is behind, updating...', { prNumber });
 
       // Add updating label
@@ -89,8 +85,7 @@ async function processPR(
         steps.push({
           label: 'Branch update failed — merge conflict detected',
           status: 'failure',
-          detail:
-            'Please resolve conflicts and add the ready label again to re-queue.',
+          detail: 'Please resolve conflicts and add the ready label again to re-queue.',
         });
 
         // Add conflict label
@@ -138,10 +133,7 @@ async function processPR(
     logger.info('Merging PR', { prNumber, method: config.mergeMethod });
 
     const pr = await api.getPullRequest(prNumber);
-    const mergeCommitSha = await api.mergePullRequest(
-      prNumber,
-      config.mergeMethod
-    );
+    const mergeCommitSha = await api.mergePullRequest(prNumber, config.mergeMethod);
 
     logger.info('PR merged successfully', {
       prNumber,
@@ -165,8 +157,7 @@ async function processPR(
     logger.error('Error processing PR', error as Error, { prNumber });
     result = 'failed';
 
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     steps.push({
       label: 'Error occurred',
       status: 'failure',
@@ -190,16 +181,9 @@ async function processPR(
   } finally {
     // Post a single summary comment with all processing steps
     try {
-      await api.addComment(
-        prNumber,
-        COMMENT_TEMPLATES.buildSummary(summaryTitle, steps)
-      );
+      await api.addComment(prNumber, COMMENT_TEMPLATES.buildSummary(summaryTitle, steps));
     } catch (commentError) {
-      logger.error(
-        'Failed to post summary comment',
-        commentError as Error,
-        { prNumber }
-      );
+      logger.error('Failed to post summary comment', commentError as Error, { prNumber });
     }
   }
 }
@@ -280,14 +264,7 @@ async function run(): Promise<void> {
     }
 
     // Process the PR
-    const result = await processPR(
-      api,
-      validator,
-      updater,
-      prNumber,
-      config,
-      logger
-    );
+    const result = await processPR(api, validator, updater, prNumber, config, logger);
 
     logger.info('PR processing complete', {
       prNumber,
