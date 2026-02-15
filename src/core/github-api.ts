@@ -7,12 +7,7 @@ import { GitHub } from '@actions/github/lib/utils';
 import type { components } from '@octokit/openapi-types';
 import { GitHubAPIError, isGitHubError } from '../utils/errors';
 import { Logger, createLogger } from '../utils/logger';
-import type {
-  RepositoryInfo,
-  MergeMethod,
-  CheckStatus,
-  UpdateResult,
-} from '../types/queue';
+import type { RepositoryInfo, MergeMethod, CheckStatus, UpdateResult } from '../types/queue';
 
 type Octokit = InstanceType<typeof GitHub>;
 type PullRequest = components['schemas']['pull-request'];
@@ -62,7 +57,11 @@ export class GitHubAPI {
   private octokit: Octokit;
   private logger: Logger;
 
-  constructor(token: string, private repo: RepositoryInfo, logger?: Logger) {
+  constructor(
+    token: string,
+    private repo: RepositoryInfo,
+    logger?: Logger
+  ) {
     this.octokit = getOctokit(token);
     this.logger = logger || createLogger({ component: 'GitHubAPI', ...repo });
   }
@@ -114,7 +113,11 @@ export class GitHubAPI {
   }
 
   /**
-   * Get combined status for a commit
+   * Get combined status for a commit.
+   *
+   * Fetches both check-runs and commit-statuses (first page only).
+   * Logs a warning when the response size equals the default page limit,
+   * which may indicate truncated results.
    */
   async getCommitStatus(ref: string): Promise<CheckStatus[]> {
     this.logger.debug('Fetching commit status', { ref });
@@ -127,13 +130,20 @@ export class GitHubAPI {
         ref,
       });
 
-      // Get commit statuses
-      const { data: statuses } =
-        await this.octokit.rest.repos.getCombinedStatusForRef({
-          owner: this.repo.owner,
-          repo: this.repo.repo,
+      if (checkRuns.total_count > checkRuns.check_runs.length) {
+        this.logger.warning('Check runs response may be truncated', {
           ref,
+          returned: checkRuns.check_runs.length,
+          total: checkRuns.total_count,
         });
+      }
+
+      // Get commit statuses
+      const { data: statuses } = await this.octokit.rest.repos.getCombinedStatusForRef({
+        owner: this.repo.owner,
+        repo: this.repo.repo,
+        ref,
+      });
 
       // Combine check runs and statuses with proper status mapping
       const checkStatuses: CheckStatus[] = [
@@ -171,12 +181,11 @@ export class GitHubAPI {
 
     try {
       const pr = await this.getPullRequest(prNumber);
-      const comparison =
-        await this.octokit.rest.repos.compareCommitsWithBasehead({
-          owner: this.repo.owner,
-          repo: this.repo.repo,
-          basehead: `${pr.base.ref}...${pr.head.ref}`,
-        });
+      const comparison = await this.octokit.rest.repos.compareCommitsWithBasehead({
+        owner: this.repo.owner,
+        repo: this.repo.repo,
+        basehead: `${pr.base.ref}...${pr.head.ref}`,
+      });
 
       // behind_by = commits in base that are NOT in head (PR is behind)
       return comparison.data.behind_by > 0;
@@ -236,14 +245,10 @@ export class GitHubAPI {
       };
     } catch (error: unknown) {
       const statusCode = isGitHubError(error) ? error.status : undefined;
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
 
       // 409 or message containing "conflict" → merge conflict
-      if (
-        isGitHubError(error) &&
-        (error.status === 409 || error.message?.includes('conflict'))
-      ) {
+      if (isGitHubError(error) && (error.status === 409 || error.message?.includes('conflict'))) {
         this.logger.warning('Merge conflict detected during branch update', {
           prNumber,
           statusCode,
@@ -435,9 +440,13 @@ export class GitHubAPI {
    * (oldest first).
    *
    * Uses the Issues API with a label filter, then keeps only pull requests.
+   * Fetches up to 100 results (first page). Logs a warning when the
+   * response is full, which may indicate additional results exist.
    */
   async listPRsWithLabel(label: string): Promise<number[]> {
     this.logger.debug('Listing PRs with label', { label });
+
+    const perPage = 100;
 
     try {
       const { data } = await this.octokit.rest.issues.listForRepo({
@@ -447,13 +456,18 @@ export class GitHubAPI {
         state: 'open',
         sort: 'created',
         direction: 'asc',
-        per_page: 100,
+        per_page: perPage,
       });
 
+      if (data.length >= perPage) {
+        this.logger.warning(
+          'listPRsWithLabel response may be truncated — results equal page size',
+          { label, count: data.length, perPage }
+        );
+      }
+
       // issues.listForRepo returns both issues and PRs — keep only PRs
-      const prNumbers = data
-        .filter(issue => issue.pull_request != null)
-        .map(issue => issue.number);
+      const prNumbers = data.filter(issue => issue.pull_request != null).map(issue => issue.number);
 
       this.logger.debug('Found PRs with label', { label, count: prNumbers.length, prNumbers });
       return prNumbers;

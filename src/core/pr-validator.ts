@@ -77,12 +77,8 @@ export class PRValidator {
       const approved = true;
 
       // Check for blocking labels (filter undefined label names for type safety)
-      const prLabels = pr.labels
-        .map(l => l.name)
-        .filter((name): name is string => name != null);
-      const blockingLabels = this.config.blockLabels.filter(label =>
-        prLabels.includes(label)
-      );
+      const prLabels = pr.labels.map(l => l.name).filter((name): name is string => name != null);
+      const blockingLabels = this.config.blockLabels.filter(label => prLabels.includes(label));
 
       if (blockingLabels.length > 0) {
         return {
@@ -162,9 +158,7 @@ export class PRValidator {
    * considered (a reviewer who requested changes and later approved counts
    * as approved).
    */
-  async checkApproval(
-    prNumber: number
-  ): Promise<{ valid: boolean; reason?: string }> {
+  async checkApproval(prNumber: number): Promise<{ valid: boolean; reason?: string }> {
     const reviews = await this.api.getPRReviews(prNumber);
 
     // Keep only the latest review per reviewer (reviews come chronologically)
@@ -178,9 +172,7 @@ export class PRValidator {
       }
     }
 
-    const hasApproval = [...latestByUser.values()].some(
-      state => state === 'APPROVED'
-    );
+    const hasApproval = [...latestByUser.values()].some(state => state === 'APPROVED');
     const hasChangesRequested = [...latestByUser.values()].some(
       state => state === 'CHANGES_REQUESTED'
     );
@@ -210,9 +202,7 @@ export class PRValidator {
    * creating a circular dependency where a previous failed run blocks the
    * PR from being re-queued.
    */
-  async checkStatusChecks(
-    sha: string
-  ): Promise<{ valid: boolean; reason?: string }> {
+  async checkStatusChecks(sha: string): Promise<{ valid: boolean; reason?: string }> {
     if (!this.config.requireAllChecks) {
       return { valid: true };
     }
@@ -222,9 +212,7 @@ export class PRValidator {
     // Exclude checks the user has explicitly asked to ignore
     const ignored = this.config.ignoreChecks;
     const checks =
-      ignored.length > 0
-        ? allChecks.filter(c => !ignored.includes(c.name))
-        : allChecks;
+      ignored.length > 0 ? allChecks.filter(c => !ignored.includes(c.name)) : allChecks;
 
     if (ignored.length > 0) {
       const skipped = allChecks.length - checks.length;
@@ -238,9 +226,7 @@ export class PRValidator {
     }
 
     // Filter for failed checks
-    const failedChecks = checks.filter(
-      c => c.status === 'failure' || c.status === 'cancelled'
-    );
+    const failedChecks = checks.filter(c => c.status === 'failure' || c.status === 'cancelled');
 
     if (failedChecks.length > 0) {
       return {
