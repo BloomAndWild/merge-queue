@@ -20,7 +20,7 @@ import type { MergeResult } from '../../types/queue';
 /**
  * Process a single PR from the queue
  */
-async function processPR(
+export async function processPR(
   api: GitHubAPI,
   validator: PRValidator,
   updater: BranchUpdater,
@@ -66,9 +66,54 @@ async function processPR(
 
     steps.push({ label: 'Validation passed', status: 'success' });
 
-    // Check if branch needs updating
-    if (validation.checks && !validation.checks.upToDate && config.autoUpdateBranch) {
-      logger.info('PR branch is behind, updating...', { prNumber });
+    // Check staleness and update branch in a retry loop.
+    // If the base branch advances while we wait for CI (e.g. someone manually
+    // merges another PR), we re-update and re-test before merging.
+    let isBehind = validation.checks?.upToDate === false;
+    let updateAttempts = 0;
+
+    if (!isBehind) {
+      steps.push({ label: 'Branch already up to date', status: 'success' });
+    }
+
+    while (isBehind && config.autoUpdateBranch) {
+      updateAttempts++;
+
+      if (updateAttempts > config.maxUpdateRetries) {
+        logger.warning('Exceeded max update retries — base branch keeps advancing', {
+          prNumber,
+          attempts: updateAttempts - 1,
+          maxRetries: config.maxUpdateRetries,
+        });
+
+        steps.push({
+          label: `Branch update retries exhausted (${config.maxUpdateRetries}/${config.maxUpdateRetries})`,
+          status: 'failure',
+          detail: 'The base branch kept advancing while waiting for CI. Please re-queue.',
+        });
+
+        await api.addLabels(prNumber, [config.failedLabel]);
+        await api.removeLabel(prNumber, config.processingLabel);
+        await api.removeLabel(prNumber, config.queueLabel);
+
+        result = 'failed';
+        return result;
+      }
+
+      if (updateAttempts > 1) {
+        logger.info('Base branch advanced during CI wait, re-updating...', {
+          prNumber,
+          attempt: updateAttempts,
+          maxRetries: config.maxUpdateRetries,
+        });
+
+        steps.push({
+          label: `Branch went stale, re-updating (attempt ${updateAttempts}/${config.maxUpdateRetries})`,
+          status: 'success',
+        });
+      }
+
+      logger.info('PR branch is behind, updating...', { prNumber, attempt: updateAttempts });
 
       // Add updating label
       await api.addLabels(prNumber, [config.updatingLabel]);
@@ -121,12 +166,52 @@ async function processPR(
 
       logger.info('Branch updated and tests passed', { prNumber });
       steps.push({
-        label: 'Branch updated with latest master',
+        label: 'Branch updated with latest base',
         status: 'success',
       });
       steps.push({ label: 'Tests passed after update', status: 'success' });
-    } else {
-      steps.push({ label: 'Branch already up to date', status: 'success' });
+
+      // Re-check staleness before proceeding to merge — the base branch
+      // may have advanced again while we were waiting for CI.
+      isBehind = await validator.isBehind(prNumber);
+    }
+
+    // If the branch is behind and auto-update is disabled, we cannot merge safely.
+    if (isBehind && !config.autoUpdateBranch) {
+      logger.warning('Branch is behind base and auto-update is disabled', { prNumber });
+
+      steps.push({
+        label: 'Branch is behind base branch',
+        status: 'failure',
+        detail: 'Auto-update is disabled. Please update the branch manually and re-queue.',
+      });
+
+      await api.addLabels(prNumber, [config.failedLabel]);
+      await api.removeLabel(prNumber, config.processingLabel);
+      await api.removeLabel(prNumber, config.queueLabel);
+
+      result = 'failed';
+      return result;
+    }
+
+    // Final staleness gate — catches the case where the branch was initially
+    // up-to-date but main advanced before we reached the merge call.
+    const finalBehindCheck = await validator.isBehind(prNumber);
+    if (finalBehindCheck) {
+      logger.warning('Branch became stale just before merge', { prNumber });
+
+      steps.push({
+        label: 'Branch became stale before merge — base branch advanced',
+        status: 'failure',
+        detail: 'The base branch advanced after validation. Please re-queue.',
+      });
+
+      await api.addLabels(prNumber, [config.failedLabel]);
+      await api.removeLabel(prNumber, config.processingLabel);
+      await api.removeLabel(prNumber, config.queueLabel);
+
+      result = 'failed';
+      return result;
     }
 
     // Merge the PR
