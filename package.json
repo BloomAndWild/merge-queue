@@ -6,10 +6,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc && npm run build:actions",
-    "build:actions": "npm run build:add-to-queue && npm run build:process-queue && npm run build:remove-from-queue",
+    "build:actions": "npm run build:add-to-queue && npm run build:process-queue && npm run build:remove-from-queue && npm run build:notify",
     "build:add-to-queue": "cd src/actions/add-to-queue && npm run build",
     "build:process-queue": "cd src/actions/process-queue && npm run build",
     "build:remove-from-queue": "cd src/actions/remove-from-queue && npm run build",
+    "build:notify": "cd src/actions/notify && npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

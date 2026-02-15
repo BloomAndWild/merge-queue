@@ -1,0 +1,34 @@
+name: 'Merge Queue Notify'
+description: 'Sends a Slack notification with the result of merge queue processing'
+author: 'Josh Butterworth'
+
+inputs:
+  slack-webhook-url:
+    description: 'Slack incoming webhook URL'
+    required: true
+
+  github-token:
+    description: 'GitHub token to fetch PR details (title, author)'
+    required: true
+
+  # Repository identification (auto-detected from context)
+  repository:
+    description: 'Target repository in format owner/repo (auto-detected)'
+    required: false
+    default: ${{ github.repository }}
+
+  pr-number:
+    description: 'PR number that was processed'
+    required: true
+
+  result:
+    description: 'Result of queue processing (merged, failed, conflict)'
+    required: true
+
+outputs:
+  notified:
+    description: 'Whether a notification was sent successfully'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
