@@ -76,6 +76,11 @@ inputs:
     required: false
     default: '30'
 
+  max-update-retries:
+    description: 'Maximum number of branch update attempts when base branch advances during processing'
+    required: false
+    default: '3'
+
   # Merge configuration
   merge-method:
     description: 'Merge method (merge, squash, or rebase)'

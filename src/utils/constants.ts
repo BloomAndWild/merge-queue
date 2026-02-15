@@ -22,6 +22,7 @@ export const DEFAULT_CONFIG = {
   blockLabels: ['do-not-merge', 'wip'],
   autoUpdateBranch: true,
   updateTimeoutMinutes: 30,
+  maxUpdateRetries: 3,
   mergeMethod: 'squash' as const,
   deleteBranchAfterMerge: true,
   ignoreChecks: [] as string[],

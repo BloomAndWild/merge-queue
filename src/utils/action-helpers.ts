@@ -50,6 +50,13 @@ export function getConfig(): QueueConfig {
     );
   }
 
+  const maxUpdateRetries = parseInt(core.getInput('max-update-retries'), 10);
+  if (isNaN(maxUpdateRetries) || maxUpdateRetries <= 0) {
+    throw new Error(
+      `Invalid max-update-retries: "${core.getInput('max-update-retries')}". Must be a positive integer.`
+    );
+  }
+
   return {
     queueLabel: core.getInput('queue-label'),
     failedLabel: core.getInput('failed-label'),
@@ -66,6 +73,7 @@ export function getConfig(): QueueConfig {
       .filter(Boolean),
     autoUpdateBranch: core.getInput('auto-update-branch') === 'true',
     updateTimeoutMinutes,
+    maxUpdateRetries,
     mergeMethod: mergeMethod as MergeMethod,
     deleteBranchAfterMerge: core.getInput('delete-branch-after-merge') === 'true',
     ignoreChecks: core
