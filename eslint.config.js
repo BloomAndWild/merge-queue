@@ -4,14 +4,7 @@ const js = require('@eslint/js');
 
 module.exports = [
   {
-    ignores: [
-      'dist/',
-      'node_modules/',
-      'coverage/',
-      '**/dist/**',
-      '*.js',
-      '!eslint.config.js',
-    ],
+    ignores: ['dist/', 'node_modules/', 'coverage/', '**/dist/**', '*.js', '!eslint.config.js'],
   },
   {
     files: ['**/*.ts'],
@@ -48,7 +41,10 @@ module.exports = [
       ...tsPlugin.configs['recommended-requiring-type-checking'].rules,
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
     },

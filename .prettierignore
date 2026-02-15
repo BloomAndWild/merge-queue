@@ -1,0 +1,10 @@
+dist/
+node_modules/
+coverage/
+**/dist/
+*.yml
+*.yaml
+*.md
+package.json
+package-lock.json
+tsconfig.json
