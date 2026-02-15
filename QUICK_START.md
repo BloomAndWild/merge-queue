@@ -71,12 +71,14 @@ on:
 
 jobs:
   add-to-queue:
-    if: github.event.label.name == 'ready'
+    # Set the MERGE_QUEUE_LABEL repo variable to customise (defaults to "ready")
+    if: github.event.label.name == (vars.MERGE_QUEUE_LABEL || 'ready')
     runs-on: ubuntu-latest
     steps:
       - uses: YOUR-ORG/merge-queue@v1/src/actions/add-to-queue
         with:
           github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}
           ignore-checks: 'Add PR to Merge Queue,Remove PR from Merge Queue,Process Merge Queue'
 ```
 
@@ -101,6 +103,7 @@ jobs:
         uses: YOUR-ORG/merge-queue@v1/src/actions/process-queue
         with:
           github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}
           ignore-checks: 'Add PR to Merge Queue,Remove PR from Merge Queue,Process Merge Queue'
       - name: Process next in queue
         if: steps.process.outputs.processed == 'true'
@@ -119,7 +122,7 @@ on:
 jobs:
   remove-from-queue:
     if: |
-      (github.event.action == 'unlabeled' && github.event.label.name == 'ready') ||
+      (github.event.action == 'unlabeled' && github.event.label.name == (vars.MERGE_QUEUE_LABEL || 'ready')) ||
       github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
@@ -132,8 +135,10 @@ Replace `YOUR-ORG` with your GitHub org/username.
 
 ### 4. Create Labels (2 minutes)
 
+Create the trigger label (use your custom name if you set `MERGE_QUEUE_LABEL`):
+
 ```bash
-gh label create "ready" --color "0e8a16" --description "Add to merge queue"
+gh label create "ready" --color "0e8a16" --description "Add to merge queue"  # or your custom label name
 gh label create "queued-for-merge" --color "fbca04"
 gh label create "merge-processing" --color "1d76db"
 gh label create "merge-updating" --color "5319e7"
@@ -143,12 +148,23 @@ gh label create "merge-queue-conflict" --color "b60205"
 
 Or create manually in GitHub UI: Issues → Labels → New label
 
-### 5. Test (5 minutes)
+### 5. (Optional) Customise the Trigger Label
+
+By default the queue is triggered by the `ready` label. To use a different name:
+
+1. Go to your repository → **Settings → Secrets and variables → Actions → Variables**
+2. Click **New repository variable**
+3. Name: `MERGE_QUEUE_LABEL`, Value: your preferred label name (e.g. `ship-it`)
+4. Create the matching label in step 4 above
+
+The example workflows already reference this variable with a fallback to `ready`, so no workflow file edits are needed.
+
+### 6. Test (5 minutes)
 
 1. Create a test PR
 2. Get it approved
 3. Ensure checks pass
-4. Add `ready` label
+4. Add your trigger label (default: `ready`)
 5. Watch it merge automatically!
 
 ## Usage
@@ -158,12 +174,12 @@ Or create manually in GitHub UI: Issues → Labels → New label
 1. Create PR
 2. Get approval(s)
 3. Ensure tests pass
-4. Add `ready` label
+4. Add the trigger label (default: `ready`)
 5. Done! Queue handles the rest
 
 ### Remove from Queue
 
-- Remove `ready` label, or
+- Remove the trigger label, or
 - Close the PR
 
 ### Check Queue Status
@@ -279,7 +295,7 @@ Notifications are sent for `merged`, `failed`, and `conflict` results. The notif
 
 | Label | Meaning |
 |-------|---------|
-| `ready` | Add PR to queue |
+| `ready` | Add PR to queue (configurable via `MERGE_QUEUE_LABEL` repo variable) |
 | `queued-for-merge` | Waiting in queue |
 | `merge-processing` | Being processed |
 | `merge-updating` | Branch updating |
@@ -288,9 +304,9 @@ Notifications are sent for `merged`, `failed`, and `conflict` results. The notif
 
 ### Workflow Triggers
 
-- **Entry**: When `ready` label added
+- **Entry**: When the trigger label is added (default: `ready`)
 - **Manager**: After entry/remove workflows complete + self-dispatch while queue has items
-- **Remove**: When `ready` removed or PR closed
+- **Remove**: When the trigger label is removed or PR is closed
 
 ### Required Token Permissions (Fine-Grained PAT)
 
@@ -304,4 +320,4 @@ Notifications are sent for `merged`, `failed`, and `conflict` results. The notif
 
 ---
 
-**Ready to merge automatically? Add the `ready` label!**
+**Ready to merge automatically? Add the trigger label (default: `ready`)!**

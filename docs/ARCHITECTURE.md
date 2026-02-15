@@ -81,7 +81,7 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 ### Adding a PR to Queue
 
 ```
-1. User adds "ready" label to PR
+1. User adds trigger label (default: "ready") to PR
 2. queue-entry.yml workflow triggered
 3. add-to-queue action called
 4. PRValidator validates PR:
@@ -126,7 +126,7 @@ The merge queue is a TypeScript-based GitHub Actions utility that automatically 
 ### Removing from Queue
 
 ```
-1. User removes "ready" label OR closes PR
+1. User removes trigger label OR closes PR
 2. queue-remove.yml workflow triggered
 3. remove-from-queue action called
 4. Remove queue-related labels (queued-for-merge, merge-processing, merge-updating)
@@ -312,7 +312,7 @@ See [../claude-plan.md](../claude-plan.md) for comprehensive checklist
 2. Configure `MERGE_QUEUE_TOKEN` secret
 3. Create required labels
 4. Customize workflow inputs (optional)
-5. Add "ready" label to PR to test
+5. Add trigger label (default: "ready") to PR to test
 
 ### Updating
 

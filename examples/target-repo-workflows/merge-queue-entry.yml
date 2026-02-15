@@ -7,8 +7,9 @@ on:
 jobs:
   add-to-queue:
     name: Add PR to Merge Queue
-    # Only run when "ready" label is added
-    if: github.event.label.name == 'ready'
+    # Only run when the queue trigger label is added.
+    # Set the MERGE_QUEUE_LABEL repository variable to customise (defaults to "ready").
+    if: github.event.label.name == (vars.MERGE_QUEUE_LABEL || 'ready')
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +24,7 @@ jobs:
           pr-number: ${{ github.event.pull_request.number }}
 
           # Queue configuration
-          queue-label: ready
+          queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}
           failed-label: merge-queue-failed
           conflict-label: merge-queue-conflict
           processing-label: merge-processing

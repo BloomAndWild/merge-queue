@@ -7,14 +7,13 @@ A TypeScript-based GitHub merge queue utility that automatically validates and m
 - **Sequential Processing**: Process one PR at a time to ensure each is tested against the latest master
 - **Auto-Update Branches**: Automatically merge master into PR branches when they fall behind
 - **Smart Validation**: Validates required checks, draft state, blocking labels, and merge conflicts
-- **Multi-Repository Support**: Each repository gets its own independent queue
-- **Zero Configuration**: No setup needed — labels are the source of truth
 - **Self-Service**: Add to any repository without modifying the merge-queue codebase
-- **Concurrency-Safe**: Multiple PRs can be labeled "ready" simultaneously without issues
+- **Configurable Trigger Label**: Use the default "ready" label or choose your own via a repository variable
+- **Concurrency-Safe**: Multiple PRs can be labeled simultaneously without issues
 
 ## How It Works
 
-1. Label a PR with "ready" to add it to the queue
+1. Label a PR with "ready" (or your configured trigger label) to add it to the queue
 2. The queue manager validates the PR (checks passing, up-to-date)
 3. If the branch is behind master, it automatically merges master into the PR
 4. GitHub automatically re-runs tests after the update
@@ -59,7 +58,7 @@ To add the merge queue to your repository:
 
 Copy these three workflow files to your repository's `.github/workflows/` directory:
 
-- `merge-queue-entry.yml` - Triggered when "ready" label is added
+- `merge-queue-entry.yml` - Triggered when the queue trigger label is added (default: "ready")
 - `merge-queue-manager.yml` - Triggered after entry/remove workflows + self-dispatch
 - `merge-queue-remove.yml` - Triggered when label is removed or PR is closed
 
@@ -86,13 +85,15 @@ Add it as a secret in your repository:
 - Name: `MERGE_QUEUE_TOKEN`
 - Value: Your PAT
 
-### 3. Add the "ready" Label
+### 3. Add the Trigger Label
 
-Add a PR to the queue by applying the "ready" label. The queue will automatically:
+Add a PR to the queue by applying the trigger label (default: "ready"). The queue will automatically:
 - Validate the PR
 - Add the `queued-for-merge` label
 - Process it when its turn comes
 - Merge it when all checks pass
+
+To use a custom trigger label instead of "ready", set a **repository variable** called `MERGE_QUEUE_LABEL` (Settings → Secrets and variables → Actions → Variables) to your preferred name. The example workflows reference this variable with a fallback, so everything stays in sync automatically.
 
 ## Configuration
 
@@ -101,11 +102,15 @@ Configure the queue behavior via workflow inputs:
 ```yaml
 with:
   github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
-  queue-label: 'ready'                # Label that triggers queue entry
+  queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}  # Trigger label (configurable via repo variable)
   merge-method: 'squash'              # merge, squash, or rebase
   auto-update-branch: true            # Auto-merge master when behind
   update-timeout-minutes: 30          # Max wait time for tests after update
 ```
+
+> **Tip**: Set the `MERGE_QUEUE_LABEL` repository variable to change the trigger
+> label for your repository. If the variable is not set, all workflows default
+> to "ready".
 
 ## Development
 
@@ -201,7 +206,7 @@ The queue handles various failure scenarios:
 
 Standard labels used by the queue:
 
-- `ready` - Trigger label to add PR to queue
+- `ready` - Trigger label to add PR to queue (configurable via `MERGE_QUEUE_LABEL` repo variable)
 - `queued-for-merge` - PR is waiting in queue
 - `merge-processing` - PR is currently being processed
 - `merge-updating` - PR branch is being updated with master

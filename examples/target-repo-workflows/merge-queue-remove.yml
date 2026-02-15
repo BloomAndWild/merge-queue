@@ -3,15 +3,16 @@ name: Merge Queue Remove
 on:
   pull_request:
     types:
-      - unlabeled  # When "ready" label is removed
+      - unlabeled  # When the queue trigger label is removed
       - closed     # When PR is closed
 
 jobs:
   remove-from-queue:
     name: Remove PR from Merge Queue
-    # Run when "ready" label is removed OR PR is closed
+    # Run when the queue trigger label is removed OR PR is closed.
+    # Set the MERGE_QUEUE_LABEL repository variable to customise (defaults to "ready").
     if: |
-      (github.event.action == 'unlabeled' && github.event.label.name == 'ready') ||
+      (github.event.action == 'unlabeled' && github.event.label.name == (vars.MERGE_QUEUE_LABEL || 'ready')) ||
       github.event.action == 'closed'
     runs-on: ubuntu-latest
 

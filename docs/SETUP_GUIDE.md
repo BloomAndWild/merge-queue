@@ -158,9 +158,17 @@ In your target repository:
    - `block-labels`: Labels that prevent queueing
    - `update-timeout-minutes`: How long to wait for tests
 
+   To customise the trigger label, set the `MERGE_QUEUE_LABEL` repository
+   variable instead of editing workflow files — the example workflows already
+   reference it with a fallback to `ready`.
+
 ### Step 4: Create Labels
 
-The queue uses several labels. Create them in your repository:
+The queue uses several labels. Create them in your repository.
+
+> **Tip**: The trigger label defaults to `ready`. To use a different name, set
+> the `MERGE_QUEUE_LABEL` repository variable (Settings → Secrets and variables
+> → Actions → Variables) and create a label with that name instead.
 
 1. Go to Issues → Labels → New label
 
@@ -168,7 +176,7 @@ The queue uses several labels. Create them in your repository:
 
    | Label | Color | Description |
    |-------|-------|-------------|
-   | `ready` | `#0e8a16` (green) | Add this to queue a PR |
+   | `ready` (or your custom trigger label) | `#0e8a16` (green) | Add this to queue a PR |
    | `queued-for-merge` | `#fbca04` (yellow) | PR is waiting in queue |
    | `merge-processing` | `#1d76db` (blue) | PR is being processed |
    | `merge-updating` | `#5319e7` (purple) | Branch is being updated |
@@ -178,6 +186,7 @@ The queue uses several labels. Create them in your repository:
    **Quick create script:**
    ```bash
    # Requires GitHub CLI (gh)
+   # Replace "ready" with your custom label name if you set MERGE_QUEUE_LABEL
    gh label create "ready" --color "0e8a16" --description "Add this to queue a PR"
    gh label create "queued-for-merge" --color "fbca04" --description "PR is waiting in queue"
    gh label create "merge-processing" --color "1d76db" --description "PR is being processed"
@@ -204,7 +213,7 @@ git push origin main
 
 3. Ensure all checks are passing
 
-4. Add the `ready` label
+4. Add the trigger label (default: `ready`)
 
 5. Watch for:
    - ✅ `queued-for-merge` label added
@@ -224,7 +233,7 @@ git push origin main
 
 1. Create a PR with failing tests
 
-2. Add `ready` label
+2. Add the trigger label (default: `ready`)
 
 3. Verify:
    - ✅ `merge-queue-failed` label added
@@ -237,7 +246,7 @@ git push origin main
 
 2. Create PR #2 (now behind master)
 
-3. Add `ready` label to PR #2
+3. Add the trigger label (default: `ready`) to PR #2
 
 4. Verify:
    - ✅ Branch automatically updated
@@ -379,7 +388,7 @@ When new version is released:
 4. **Communication**
    - Inform team about merge queue
    - Document in repository README
-   - Create team guide for using `ready` label
+   - Create team guide for using the trigger label (default: `ready`)
 
 ## Next Steps
 

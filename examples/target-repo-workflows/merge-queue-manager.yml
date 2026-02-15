@@ -30,8 +30,8 @@ jobs:
           # Repository info (auto-detected)
           repository: ${{ github.repository }}
 
-          # Queue configuration
-          queue-label: ready
+          # Queue configuration (set the MERGE_QUEUE_LABEL repo variable to customise)
+          queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}
           failed-label: merge-queue-failed
           conflict-label: merge-queue-conflict
           processing-label: merge-processing
