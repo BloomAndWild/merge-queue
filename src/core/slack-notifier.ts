@@ -88,9 +88,7 @@ interface SlackActionElement {
  * Returns `null` for result types that should not trigger a notification
  * (e.g. `none`, `removed`).
  */
-export function buildSlackPayload(
-  params: SlackNotificationParams
-): SlackPayload | null {
+export function buildSlackPayload(params: SlackNotificationParams): SlackPayload | null {
   const { result, pr } = params;
 
   const color = RESULT_COLOURS[result];
@@ -160,11 +158,17 @@ export async function sendSlackNotification(
   webhookUrl: string,
   payload: SlackPayload
 ): Promise<boolean> {
-  const response = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-  return response.ok;
+    return response.ok;
+  } catch {
+    // Network errors (DNS failure, connection refused, etc.)
+    // Return false to honour the "never throws" contract.
+    return false;
+  }
 }

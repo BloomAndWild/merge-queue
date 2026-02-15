@@ -6,7 +6,7 @@
 import * as core from '@actions/core';
 import { GitHubAPI } from '../../core/github-api';
 import { createLogger } from '../../utils/logger';
-import { parseRepository } from '../../utils/action-helpers';
+import { parseRepository, parsePRNumber } from '../../utils/action-helpers';
 
 /**
  * Main action logic
@@ -16,7 +16,7 @@ async function run(): Promise<void> {
     // Get inputs
     const token = core.getInput('github-token', { required: true });
     const targetRepo = parseRepository(core.getInput('repository'));
-    const prNumber = parseInt(core.getInput('pr-number'), 10);
+    const prNumber = parsePRNumber(core.getInput('pr-number'));
     const reason = core.getInput('reason') || 'Manual removal';
 
     const queuedLabel = core.getInput('queued-label');

@@ -8,16 +8,27 @@ import type { QueueConfig, RepositoryInfo, MergeMethod } from '../types/queue';
 const VALID_MERGE_METHODS: MergeMethod[] = ['merge', 'squash', 'rebase'];
 
 /**
- * Parse a repository string in "owner/repo" format into a RepositoryInfo object
+ * Parse a repository string in "owner/repo" format into a RepositoryInfo object.
+ * Rejects strings with more or fewer than exactly one slash.
  */
 export function parseRepository(repoString: string): RepositoryInfo {
-  const [owner, repo] = repoString.split('/');
-  if (!owner || !repo) {
-    throw new Error(
-      `Invalid repository format: "${repoString}". Expected "owner/repo".`
-    );
+  const parts = repoString.split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid repository format: "${repoString}". Expected "owner/repo".`);
   }
-  return { owner, repo };
+  return { owner: parts[0], repo: parts[1] };
+}
+
+/**
+ * Parse and validate a PR number string.
+ * Throws if the value is not a positive integer.
+ */
+export function parsePRNumber(input: string): number {
+  const prNumber = parseInt(input, 10);
+  if (isNaN(prNumber) || prNumber <= 0) {
+    throw new Error(`Invalid pr-number: "${input}". Must be a positive integer.`);
+  }
+  return prNumber;
 }
 
 /**
@@ -32,10 +43,7 @@ export function getConfig(): QueueConfig {
     );
   }
 
-  const updateTimeoutMinutes = parseInt(
-    core.getInput('update-timeout-minutes'),
-    10
-  );
+  const updateTimeoutMinutes = parseInt(core.getInput('update-timeout-minutes'), 10);
   if (isNaN(updateTimeoutMinutes) || updateTimeoutMinutes <= 0) {
     throw new Error(
       `Invalid update-timeout-minutes: "${core.getInput('update-timeout-minutes')}". Must be a positive integer.`
@@ -59,8 +67,7 @@ export function getConfig(): QueueConfig {
     autoUpdateBranch: core.getInput('auto-update-branch') === 'true',
     updateTimeoutMinutes,
     mergeMethod: mergeMethod as MergeMethod,
-    deleteBranchAfterMerge:
-      core.getInput('delete-branch-after-merge') === 'true',
+    deleteBranchAfterMerge: core.getInput('delete-branch-after-merge') === 'true',
     ignoreChecks: core
       .getInput('ignore-checks')
       .split(',')

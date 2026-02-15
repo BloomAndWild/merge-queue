@@ -8,7 +8,7 @@ import { GitHubAPI } from '../../core/github-api';
 import { PRValidator } from '../../core/pr-validator';
 import { createLogger } from '../../utils/logger';
 import { COMMENT_TEMPLATES } from '../../utils/constants';
-import { parseRepository, getConfig } from '../../utils/action-helpers';
+import { parseRepository, parsePRNumber, getConfig } from '../../utils/action-helpers';
 
 /**
  * Main action logic
@@ -18,7 +18,7 @@ async function run(): Promise<void> {
     // Get inputs
     const token = core.getInput('github-token', { required: true });
     const targetRepo = parseRepository(core.getInput('repository'));
-    const prNumber = parseInt(core.getInput('pr-number'), 10);
+    const prNumber = parsePRNumber(core.getInput('pr-number'));
     const config = getConfig();
 
     const logger = createLogger({
@@ -54,9 +54,7 @@ async function run(): Promise<void> {
       // Add comment
       await api.addComment(
         prNumber,
-        COMMENT_TEMPLATES.removedChecksFailure(
-          validation.reason || 'Unknown reason'
-        )
+        COMMENT_TEMPLATES.removedChecksFailure(validation.reason || 'Unknown reason')
       );
 
       core.setOutput('valid', 'false');

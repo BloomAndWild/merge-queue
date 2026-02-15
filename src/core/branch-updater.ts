@@ -59,8 +59,19 @@ export class BranchUpdater {
       sha: updateResult.sha,
     });
 
+    // Guard: updateBranch succeeded but didn't return a SHA (should not happen,
+    // but the type allows it).
+    if (!updateResult.sha) {
+      this.logger?.warning('Branch update succeeded but returned no SHA', { prNumber });
+      return {
+        success: false,
+        conflict: false,
+        error: 'Branch update succeeded but returned no SHA',
+      };
+    }
+
     // Wait for status checks to complete
-    const testsPass = await this.waitForTests(prNumber, updateResult.sha!);
+    const testsPass = await this.waitForTests(prNumber, updateResult.sha);
 
     if (!testsPass) {
       this.logger?.warning('Tests failed after branch update', { prNumber });
@@ -114,9 +125,7 @@ export class BranchUpdater {
 
       // Check if any checks failed (not just pending)
       const checks = await this.api.getCommitStatus(sha);
-      const hasFailures = checks.some(
-        c => c.status === 'failure' || c.status === 'cancelled'
-      );
+      const hasFailures = checks.some(c => c.status === 'failure' || c.status === 'cancelled');
 
       if (hasFailures) {
         this.logger?.warning('Tests failed', {
@@ -141,11 +150,11 @@ export class BranchUpdater {
     }
 
     // Timeout reached
-    this.logger?.error(
-      'Timeout waiting for tests',
-      new TimeoutError('Test timeout', timeoutMs),
-      { prNumber, sha, timeoutMs }
-    );
+    this.logger?.error('Timeout waiting for tests', new TimeoutError('Test timeout', timeoutMs), {
+      prNumber,
+      sha,
+      timeoutMs,
+    });
 
     throw new TimeoutError(
       `Tests did not complete within ${this.config.updateTimeoutMinutes} minutes`,

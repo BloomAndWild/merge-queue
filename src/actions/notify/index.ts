@@ -11,12 +11,9 @@
 
 import * as core from '@actions/core';
 import { GitHubAPI } from '../../core/github-api';
-import {
-  buildSlackPayload,
-  sendSlackNotification,
-} from '../../core/slack-notifier';
+import { buildSlackPayload, sendSlackNotification } from '../../core/slack-notifier';
 import { createLogger } from '../../utils/logger';
-import { parseRepository } from '../../utils/action-helpers';
+import { parseRepository, parsePRNumber } from '../../utils/action-helpers';
 import type { MergeResult } from '../../types/queue';
 
 const VALID_RESULTS: MergeResult[] = ['merged', 'failed', 'conflict', 'removed'];
@@ -29,7 +26,7 @@ async function run(): Promise<void> {
     const webhookUrl = core.getInput('slack-webhook-url', { required: true });
     const token = core.getInput('github-token', { required: true });
     const targetRepo = parseRepository(core.getInput('repository'));
-    const prNumber = parseInt(core.getInput('pr-number'), 10);
+    const prNumber = parsePRNumber(core.getInput('pr-number'));
     const result = core.getInput('result') as MergeResult;
 
     const logger = createLogger({
@@ -99,8 +96,7 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     // Never fail the workflow because of a notification error
-    const message =
-      error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error ? error.message : 'Unknown error';
     core.warning(`Slack notification failed: ${message}`);
     core.setOutput('notified', 'false');
   }
