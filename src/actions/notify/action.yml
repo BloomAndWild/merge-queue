@@ -22,8 +22,13 @@ inputs:
     required: true
 
   result:
-    description: 'Result of queue processing (merged, failed, conflict)'
+    description: 'Result of queue processing (merged, failed, conflict, rejected)'
     required: true
+
+  reason:
+    description: 'Optional reason to include in the notification (e.g. validation failure detail)'
+    required: false
+    default: ''
 
 outputs:
   notified:

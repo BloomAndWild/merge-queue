@@ -24,6 +24,7 @@ export interface PRDetails {
 export interface SlackNotificationParams {
   result: MergeResult;
   pr: PRDetails;
+  reason?: string;
 }
 
 /**
@@ -33,6 +34,7 @@ const RESULT_COLOURS: Record<string, string> = {
   merged: '#2ea44f',
   failed: '#d73a4a',
   conflict: '#b60205',
+  rejected: '#e36209',
 };
 
 /**
@@ -42,6 +44,7 @@ const RESULT_HEADERS: Record<string, string> = {
   merged: 'PR Merged Successfully',
   failed: 'PR Failed to Merge',
   conflict: 'PR Has Merge Conflicts',
+  rejected: 'PR Rejected from Queue',
 };
 
 /**
@@ -51,6 +54,7 @@ const RESULT_ICONS: Record<string, string> = {
   merged: ':white_check_mark:',
   failed: ':x:',
   conflict: ':warning:',
+  rejected: ':no_entry:',
 };
 
 /**
@@ -89,7 +93,7 @@ interface SlackActionElement {
  * (e.g. `none`, `removed`).
  */
 export function buildSlackPayload(params: SlackNotificationParams): SlackPayload | null {
-  const { result, pr } = params;
+  const { result, pr, reason } = params;
 
   const color = RESULT_COLOURS[result];
   if (!color) {
@@ -121,6 +125,19 @@ export function buildSlackPayload(params: SlackNotificationParams): SlackPayload
         text: ' ',
       },
     },
+  ];
+
+  if (reason) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Reason:*\n${reason}`,
+      },
+    });
+  }
+
+  blocks.push(
     {
       type: 'actions',
       elements: [
@@ -140,7 +157,7 @@ export function buildSlackPayload(params: SlackNotificationParams): SlackPayload
         },
       ],
     },
-  ];
+  );
 
   return {
     attachments: [{ color, blocks, fallback }],

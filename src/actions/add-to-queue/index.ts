@@ -59,6 +59,7 @@ async function run(): Promise<void> {
 
       core.setOutput('valid', 'false');
       core.setOutput('validation-reason', validation.reason);
+      core.setOutput('result', 'rejected');
       core.setFailed(`PR validation failed: ${validation.reason}`);
       return;
     }
@@ -76,6 +77,7 @@ async function run(): Promise<void> {
     logger.info('PR added to queue successfully', { prNumber });
 
     core.setOutput('valid', 'true');
+    core.setOutput('result', 'added');
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message);

@@ -39,7 +39,6 @@ jobs:
           queued-label: queued-for-merge
 
           # Validation requirements
-          require-all-checks: true
           allow-draft: false
           block-labels: do-not-merge,wip
           ignore-checks: 'Add PR to Merge Queue,Remove PR from Merge Queue,Process Merge Queue'

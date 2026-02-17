@@ -5,7 +5,7 @@
 /**
  * Result of a completed PR merge attempt
  */
-export type MergeResult = 'merged' | 'failed' | 'conflict' | 'removed';
+export type MergeResult = 'merged' | 'failed' | 'conflict' | 'removed' | 'rejected';
 
 /**
  * GitHub merge methods
@@ -30,7 +30,7 @@ export interface QueueConfig {
   processingLabel: string;
   updatingLabel: string;
   queuedLabel: string;
-  requireAllChecks: boolean;
+  allowPendingChecks: boolean;
   allowDraft: boolean;
   blockLabels: string[];
   autoUpdateBranch: boolean;

@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG = {
   processingLabel: 'merge-processing',
   updatingLabel: 'merge-updating',
   queuedLabel: 'queued-for-merge',
-  requireAllChecks: true,
+  allowPendingChecks: false,
   allowDraft: false,
   blockLabels: ['do-not-merge', 'wip'],
   autoUpdateBranch: true,

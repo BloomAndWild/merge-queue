@@ -14,6 +14,7 @@ jobs:
 
     steps:
       - name: Add to merge queue
+        id: add
         uses: your-org/merge-queue@v1/src/actions/add-to-queue
         with:
           # Authentication
@@ -32,7 +33,7 @@ jobs:
           queued-label: queued-for-merge
 
           # Validation requirements
-          require-all-checks: true
+          allow-pending-checks: true
           allow-draft: false
           block-labels: do-not-merge,wip
           ignore-checks: 'Add PR to Merge Queue,Remove PR from Merge Queue,Process Merge Queue'
@@ -44,3 +45,16 @@ jobs:
           # Merge configuration
           merge-method: squash
           delete-branch-after-merge: true
+
+      # Optional: Send a Slack notification when a PR fails to enter the queue.
+      # Requires a SLACK_WEBHOOK_URL secret containing an incoming webhook URL.
+      - name: Notify Slack on failure
+        if: failure() && steps.add.outputs.valid == 'false'
+        uses: your-org/merge-queue@v1/src/actions/notify
+        with:
+          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          repository: ${{ github.repository }}
+          pr-number: ${{ github.event.pull_request.number }}
+          result: rejected
+          reason: ${{ steps.add.outputs.validation-reason }}

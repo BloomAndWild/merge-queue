@@ -16,7 +16,7 @@ import { createLogger } from '../../utils/logger';
 import { parseRepository, parsePRNumber } from '../../utils/action-helpers';
 import type { MergeResult } from '../../types/queue';
 
-const VALID_RESULTS: MergeResult[] = ['merged', 'failed', 'conflict', 'removed'];
+const VALID_RESULTS: MergeResult[] = ['merged', 'failed', 'conflict', 'removed', 'rejected'];
 
 /**
  * Main action logic
@@ -28,6 +28,7 @@ async function run(): Promise<void> {
     const targetRepo = parseRepository(core.getInput('repository'));
     const prNumber = parsePRNumber(core.getInput('pr-number'));
     const result = core.getInput('result') as MergeResult;
+    const reason = core.getInput('reason') || undefined;
 
     const logger = createLogger({
       action: 'notify',
@@ -48,6 +49,7 @@ async function run(): Promise<void> {
     const payloadCheck = buildSlackPayload({
       result,
       pr: { number: prNumber, title: '', author: '', url: '', repository: '' },
+      reason,
     });
 
     if (!payloadCheck) {
@@ -72,6 +74,7 @@ async function run(): Promise<void> {
         url: pr.html_url,
         repository: `${targetRepo.owner}/${targetRepo.repo}`,
       },
+      reason,
     });
 
     if (!payload) {

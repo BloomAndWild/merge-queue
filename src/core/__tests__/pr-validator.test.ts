@@ -200,15 +200,6 @@ describe('PRValidator', () => {
   });
 
   describe('checkStatusChecks', () => {
-    it('should return valid when requireAllChecks is false', async () => {
-      config.requireAllChecks = false;
-
-      const result = await validator.checkStatusChecks('sha123');
-
-      expect(result.valid).toBe(true);
-      expect(mockAPI.getCommitStatus).not.toHaveBeenCalled();
-    });
-
     it('should return valid when all checks pass', async () => {
       mockAPI.getCommitStatus.mockResolvedValue([
         makeCheck('build', 'success'),
@@ -282,6 +273,34 @@ describe('PRValidator', () => {
       expect(result.valid).toBe(false);
       expect(result.reason).toContain('build');
       expect(result.reason).not.toContain('merge-queue');
+    });
+
+    it('should allow pending checks when allowPendingChecks is true', async () => {
+      config.allowPendingChecks = true;
+
+      mockAPI.getCommitStatus.mockResolvedValue([
+        makeCheck('build', 'success'),
+        makeCheck('deploy', 'pending'),
+      ] as never);
+
+      const result = await validator.checkStatusChecks('sha123');
+
+      expect(result.valid).toBe(true);
+    });
+
+    it('should still reject failed checks when allowPendingChecks is true', async () => {
+      config.allowPendingChecks = true;
+
+      mockAPI.getCommitStatus.mockResolvedValue([
+        makeCheck('build', 'failure'),
+        makeCheck('deploy', 'pending'),
+      ] as never);
+
+      const result = await validator.checkStatusChecks('sha123');
+
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('Failed checks');
+      expect(result.reason).toContain('build');
     });
   });
 

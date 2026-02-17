@@ -64,7 +64,7 @@ export function getConfig(): QueueConfig {
     processingLabel: core.getInput('processing-label'),
     updatingLabel: core.getInput('updating-label'),
     queuedLabel: core.getInput('queued-label'),
-    requireAllChecks: core.getInput('require-all-checks') === 'true',
+    allowPendingChecks: core.getInput('allow-pending-checks') === 'true',
     allowDraft: core.getInput('allow-draft') === 'true',
     blockLabels: core
       .getInput('block-labels')

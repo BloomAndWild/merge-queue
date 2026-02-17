@@ -13,7 +13,7 @@ describe('Constants', () => {
     });
 
     it('should have reasonable defaults', () => {
-      expect(DEFAULT_CONFIG.requireAllChecks).toBe(true);
+      expect(DEFAULT_CONFIG.allowPendingChecks).toBe(false);
       expect(DEFAULT_CONFIG.allowDraft).toBe(false);
       expect(DEFAULT_CONFIG.autoUpdateBranch).toBe(true);
     });

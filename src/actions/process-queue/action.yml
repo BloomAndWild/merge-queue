@@ -45,11 +45,6 @@ inputs:
     default: 'queued-for-merge'
 
   # Validation requirements
-  require-all-checks:
-    description: 'Require all checks to pass'
-    required: false
-    default: 'true'
-
   allow-draft:
     description: 'Allow draft PRs in queue'
     required: false

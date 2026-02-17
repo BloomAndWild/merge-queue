@@ -87,7 +87,7 @@ describe('Action Helpers', () => {
         'processing-label': 'merge-processing',
         'updating-label': 'merge-updating',
         'queued-label': 'queued-for-merge',
-        'require-all-checks': 'true',
+        'allow-pending-checks': 'false',
         'allow-draft': 'false',
         'block-labels': 'do-not-merge,wip',
         'auto-update-branch': 'true',
@@ -117,7 +117,7 @@ describe('Action Helpers', () => {
       expect(config.processingLabel).toBe('merge-processing');
       expect(config.updatingLabel).toBe('merge-updating');
       expect(config.queuedLabel).toBe('queued-for-merge');
-      expect(config.requireAllChecks).toBe(true);
+      expect(config.allowPendingChecks).toBe(false);
       expect(config.allowDraft).toBe(false);
       expect(config.blockLabels).toEqual(['do-not-merge', 'wip']);
       expect(config.autoUpdateBranch).toBe(true);
@@ -170,7 +170,7 @@ describe('Action Helpers', () => {
 
     it('should parse boolean fields correctly', () => {
       setInputs({
-        'require-all-checks': 'false',
+        'allow-pending-checks': 'true',
         'allow-draft': 'true',
         'auto-update-branch': 'false',
         'delete-branch-after-merge': 'false',
@@ -178,7 +178,7 @@ describe('Action Helpers', () => {
 
       const config = getConfig();
 
-      expect(config.requireAllChecks).toBe(false);
+      expect(config.allowPendingChecks).toBe(true);
       expect(config.allowDraft).toBe(true);
       expect(config.autoUpdateBranch).toBe(false);
       expect(config.deleteBranchAfterMerge).toBe(false);
@@ -186,13 +186,13 @@ describe('Action Helpers', () => {
 
     it('should treat non-"true" values as false for booleans', () => {
       setInputs({
-        'require-all-checks': 'yes',
+        'allow-pending-checks': 'yes',
         'allow-draft': '1',
       });
 
       const config = getConfig();
 
-      expect(config.requireAllChecks).toBe(false);
+      expect(config.allowPendingChecks).toBe(false);
       expect(config.allowDraft).toBe(false);
     });
 

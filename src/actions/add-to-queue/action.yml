@@ -50,8 +50,8 @@ inputs:
     default: 'queued-for-merge'
 
   # Validation requirements
-  require-all-checks:
-    description: 'Require all checks to pass'
+  allow-pending-checks:
+    description: 'Allow PRs with pending checks to enter the queue'
     required: false
     default: 'true'
 
@@ -103,6 +103,9 @@ outputs:
 
   validation-reason:
     description: 'Reason if validation failed'
+
+  result:
+    description: 'Result of the action (added or rejected)'
 
 runs:
   using: 'node20'
