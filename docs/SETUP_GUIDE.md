@@ -46,19 +46,84 @@ That's it for the merge-queue repo — no state branch or additional setup neede
 
 ## Part 2: Target Repository Setup
 
-### Step 1: Create a Bot User & Personal Access Token (PAT)
+### Step 1: Set Up Authentication
 
-We recommend creating a **dedicated bot account** (e.g. `yourorg-merge-bot`)
-with **write** (not admin) collaborator access to the target repository.
-A non-admin account cannot bypass branch protection rules, providing an
-extra layer of safety alongside the merge queue's built-in approval checks.
+The merge queue needs a token with write access to your repository. You have
+two options: a **GitHub App** (recommended) or a **Personal Access Token (PAT)**.
 
-#### Step 1a: Create the bot account
+#### Option A: GitHub App (Recommended)
+
+A GitHub App generates short-lived installation tokens automatically — no
+manual rotation, no user seat required, and a better audit trail.
+
+##### 1. Create the GitHub App
+
+1. Go to your **organization settings** → Developer settings → GitHub Apps → **New GitHub App**
+   (or for a personal account: Settings → Developer settings → GitHub Apps)
+
+2. Configure the app:
+   - **GitHub App name**: `Merge Queue` (or any unique name)
+   - **Homepage URL**: Your merge-queue repository URL
+   - **Webhook**: Uncheck "Active" (not needed)
+
+3. Under **Repository permissions**, set:
+
+   | Permission | Access | Why |
+   |---|---|---|
+   | **Pull requests** | Read & Write | Merge PRs, post comments, manage labels |
+   | **Contents** | Read & Write | Update branches, delete merged branches |
+   | **Actions** | Read & Write | Trigger workflow self-dispatch |
+   | **Commit statuses** | Read | Read CI status results for validation |
+   | **Checks** | Read | Read check run results for validation |
+   | **Metadata** | Read | Required by default |
+
+4. Under **Where can this GitHub App be installed?**, select "Only on this account"
+
+5. Click **"Create GitHub App"**
+
+6. Note the **App ID** shown on the app's settings page
+
+7. Scroll down to **Private keys** and click **"Generate a private key"** — a `.pem`
+   file will download automatically
+
+##### 2. Install the App
+
+1. On the app's settings page, click **"Install App"** in the sidebar
+
+2. Select your organization (or personal account)
+
+3. Choose **"Only select repositories"** and pick the repositories that need the merge queue
+
+4. Click **"Install"**
+
+##### 3. Add Secrets and Variables
+
+In each target repository:
+
+1. Go to **Settings → Secrets and variables → Actions**
+
+2. Under the **Variables** tab, click "New repository variable":
+   - **Name**: `MERGE_QUEUE_APP_ID`
+   - **Value**: The App ID from step 6 above
+
+3. Under the **Secrets** tab, click "New repository secret":
+   - **Name**: `MERGE_QUEUE_APP_PRIVATE_KEY`
+   - **Value**: Paste the full contents of the `.pem` file you downloaded
+
+#### Option B: Personal Access Token (PAT)
+
+If you prefer a PAT (or your org doesn't allow GitHub Apps), create a
+dedicated bot account with a fine-grained PAT.
+
+> **Note**: PATs expire and require manual rotation. Consider a GitHub App
+> (Option A) to avoid this maintenance burden.
+
+##### 1. Create a bot account
 
 1. Create a new GitHub account for the bot (e.g. `yourorg-merge-bot`)
 2. In the target repository: Settings → Collaborators → Add the bot with **Write** role
 
-#### Step 1b: Create a fine-grained PAT (Recommended)
+##### 2. Create a fine-grained PAT (Recommended)
 
 Log in as the bot account, then:
 
@@ -84,7 +149,7 @@ Log in as the bot account, then:
 
 5. Click **"Generate token"** and **copy the token immediately** (you won't see it again)
 
-#### Alternative: Classic PAT
+##### Alternative: Classic PAT
 
 If you can't use fine-grained tokens (e.g. org policy restrictions):
 
@@ -102,7 +167,7 @@ If you can't use fine-grained tokens (e.g. org policy restrictions):
 > **Important**: Always use a non-admin bot account for the PAT. Admin tokens
 > can bypass GitHub branch protection rules at the API level.
 
-### Step 2: Add Token as Secret
+##### 3. Add Token as Secret
 
 In your target repository:
 
@@ -116,7 +181,13 @@ In your target repository:
 
 4. Click "Add secret"
 
-### Step 3: Add Workflow Files
+### Step 2: Add Workflow Files
+
+Pick the example workflows that match the authentication method you chose in
+Step 1:
+
+- **GitHub App** → `examples/target-repo-workflows-github-app/`
+- **PAT** → `examples/target-repo-workflows/`
 
 1. Create `.github/workflows/` directory if it doesn't exist:
    ```bash
@@ -125,18 +196,28 @@ In your target repository:
 
 2. Copy the three workflow files from the merge-queue repository:
 
-   **Option A: Using curl**
+   **Using curl (GitHub App)**
    ```bash
    cd .github/workflows/
+   BASE=https://raw.githubusercontent.com/BloomAndWild/merge-queue/main/examples/target-repo-workflows-github-app
 
-   # Download workflow files
-   curl -O https://raw.githubusercontent.com/BloomAndWild/merge-queue/main/examples/target-repo-workflows/merge-queue-entry.yml
-   curl -O https://raw.githubusercontent.com/BloomAndWild/merge-queue/main/examples/target-repo-workflows/merge-queue-manager.yml
-   curl -O https://raw.githubusercontent.com/BloomAndWild/merge-queue/main/examples/target-repo-workflows/merge-queue-remove.yml
+   curl -O "$BASE/merge-queue-entry.yml"
+   curl -O "$BASE/merge-queue-manager.yml"
+   curl -O "$BASE/merge-queue-remove.yml"
    ```
 
-   **Option B: Manual copy**
-   - Copy files from `merge-queue/examples/target-repo-workflows/`
+   **Using curl (PAT)**
+   ```bash
+   cd .github/workflows/
+   BASE=https://raw.githubusercontent.com/BloomAndWild/merge-queue/main/examples/target-repo-workflows
+
+   curl -O "$BASE/merge-queue-entry.yml"
+   curl -O "$BASE/merge-queue-manager.yml"
+   curl -O "$BASE/merge-queue-remove.yml"
+   ```
+
+   **Manual copy**
+   - Copy files from the appropriate `examples/` subdirectory
    - Paste into your repo's `.github/workflows/`
 
 3. Update the workflow files:
@@ -162,7 +243,7 @@ In your target repository:
    variable instead of editing workflow files — the example workflows already
    reference it with a fallback to `ready`.
 
-### Step 4: Create Labels
+### Step 3: Create Labels
 
 The queue uses several labels. Create them in your repository.
 
@@ -195,7 +276,7 @@ The queue uses several labels. Create them in your repository.
    gh label create "merge-queue-conflict" --color "b60205" --description "Merge conflict detected"
    ```
 
-### Step 5: Commit and Push
+### Step 4: Commit and Push
 
 ```bash
 git add .github/workflows/
@@ -282,17 +363,17 @@ with:
 
 **Solution**:
 1. Check Actions tab for error messages
-2. Verify `MERGE_QUEUE_TOKEN` secret exists
-3. Validate workflow YAML syntax
-4. Ensure token has `repo` and `workflow` scopes
+2. Validate workflow YAML syntax
+3. **GitHub App**: Verify `MERGE_QUEUE_APP_ID` variable and `MERGE_QUEUE_APP_PRIVATE_KEY` secret exist. Confirm the App is still installed on the repository.
+4. **PAT**: Verify `MERGE_QUEUE_TOKEN` secret exists. Ensure token has `repo` and `workflow` scopes.
 
 ### Issue: "Permission denied" errors
 
-**Cause**: PAT doesn't have sufficient permissions
+**Cause**: Insufficient permissions on the token
 
 **Solution**:
-1. Verify PAT has access to the repository
-2. Check token hasn't expired
+1. **GitHub App**: Check the App's permission settings match the table in Step 1. Verify the App is installed on this specific repository.
+2. **PAT**: Verify PAT has access to the repository. Check token hasn't expired.
 
 ### Issue: PRs not merging
 
@@ -334,9 +415,15 @@ Search for open PRs with queue labels to see the current state:
 
 ### Token Rotation
 
-When PAT expires:
+**GitHub App**: No manual token rotation is needed. Installation tokens are
+generated automatically on each workflow run and expire after one hour. If you
+need to rotate the App's private key, generate a new one on the App settings
+page, update the `MERGE_QUEUE_APP_PRIVATE_KEY` secret in each target
+repository, and optionally revoke the old key.
 
-1. Create new PAT (same process as Step 1)
+**PAT**: When the PAT expires:
+
+1. Create new PAT (same process as Step 1, Option B)
 
 2. Update `MERGE_QUEUE_TOKEN` secret in all target repos
 
@@ -369,11 +456,10 @@ When new version is released:
 ## Best Practices
 
 1. **Token Security**
-   - Use a dedicated bot account with **write** (not admin) access
-   - Use a fine-grained PAT scoped to only the required repositories and permissions
-   - Set expiration and calendar reminders
-   - Rotate regularly
-   - Never commit tokens to git
+   - **Prefer a GitHub App** over a PAT — tokens are short-lived, auto-generated, and not tied to a user account
+   - If using a PAT: use a dedicated bot account with **write** (not admin) access, use a fine-grained PAT scoped to only the required repositories and permissions, set expiration reminders, and rotate regularly
+   - If using a GitHub App: ensure it is installed only on repositories that need the merge queue, and restrict the "Where can this GitHub App be installed?" setting to your own account
+   - Never commit tokens, private keys, or secrets to git
 
 2. **Testing**
    - Test queue with dummy PRs first

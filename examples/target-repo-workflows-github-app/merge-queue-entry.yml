@@ -13,12 +13,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.MERGE_QUEUE_APP_ID }}
+          private-key: ${{ secrets.MERGE_QUEUE_APP_PRIVATE_KEY }}
+
       - name: Add to merge queue
         id: add
         uses: BloomAndWild/merge-queue@v1/src/actions/add-to-queue
         with:
-          # Authentication
-          github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          # Authentication (GitHub App installation token)
+          github-token: ${{ steps.app-token.outputs.token }}
 
           # Repository info (auto-detected)
           repository: ${{ github.repository }}
@@ -53,7 +60,7 @@ jobs:
         uses: BloomAndWild/merge-queue@v1/src/actions/notify
         with:
           slack-webhook-url: ${{ secrets.MERGE_QUEUE_SLACK_WEBHOOK_URL }}
-          github-token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           repository: ${{ github.repository }}
           pr-number: ${{ github.event.pull_request.number }}
           result: rejected

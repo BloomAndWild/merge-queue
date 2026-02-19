@@ -1,0 +1,43 @@
+name: Merge Queue Remove
+
+on:
+  pull_request:
+    types:
+      - unlabeled  # When the queue trigger label is removed
+      - closed     # When PR is closed
+
+jobs:
+  remove-from-queue:
+    name: Remove PR from Merge Queue
+    # Run when the queue trigger label is removed OR PR is closed.
+    # Set the MERGE_QUEUE_LABEL repository variable to customise (defaults to "ready").
+    if: |
+      (github.event.action == 'unlabeled' && github.event.label.name == (vars.MERGE_QUEUE_LABEL || 'ready')) ||
+      github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.MERGE_QUEUE_APP_ID }}
+          private-key: ${{ secrets.MERGE_QUEUE_APP_PRIVATE_KEY }}
+
+      - name: Remove from merge queue
+        uses: BloomAndWild/merge-queue@v1/src/actions/remove-from-queue
+        with:
+          # Authentication (GitHub App installation token)
+          github-token: ${{ steps.app-token.outputs.token }}
+
+          # Repository info (auto-detected)
+          repository: ${{ github.repository }}
+          pr-number: ${{ github.event.pull_request.number }}
+
+          # Labels to remove
+          queued-label: queued-for-merge
+          processing-label: merge-processing
+          updating-label: merge-updating
+
+          # Reason for removal (optional)
+          reason: ${{ github.event.action == 'closed' && 'PR closed' || 'Label removed' }}
