@@ -49,7 +49,7 @@ jobs:
       # Optional: Send a Slack notification when a PR fails to enter the queue.
       # Requires a SLACK_WEBHOOK_URL secret containing an incoming webhook URL.
       - name: Notify Slack on failure
-        if: failure() && steps.add.outputs.valid == 'false'
+        if: always() && steps.add.outputs.valid == 'false'
         uses: BloomAndWild/merge-queue@v1/src/actions/notify
         with:
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
