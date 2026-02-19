@@ -165,8 +165,9 @@ previous run was interrupted. The action resumes by re-processing that PR.
 
 ### Authentication
 
-- Uses Personal Access Token (PAT) or GitHub App
-- Stored as `MERGE_QUEUE_TOKEN` secret in target repositories
+- Uses a GitHub App for authentication
+- App ID stored as `MERGE_QUEUE_APP_ID` variable, private key stored as `MERGE_QUEUE_APP_PRIVATE_KEY` secret in target repositories
+- Short-lived installation tokens are generated automatically on each workflow run
 - Requires access to the target repository for reading PRs, writing comments/labels, and merging
 
 ### Permissions Required
@@ -309,7 +310,7 @@ See [../claude-plan.md](../claude-plan.md) for comprehensive checklist
 ### Adding to Target Repository
 
 1. Copy 3 workflow files to `.github/workflows/`
-2. Configure `MERGE_QUEUE_TOKEN` secret
+2. Configure `MERGE_QUEUE_APP_ID` variable and `MERGE_QUEUE_APP_PRIVATE_KEY` secret
 3. Create required labels
 4. Customize workflow inputs (optional)
 5. Add trigger label (default: "ready") to PR to test

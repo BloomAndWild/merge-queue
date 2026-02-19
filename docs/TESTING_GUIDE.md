@@ -81,7 +81,7 @@ describe('PRValidator', () => {
 ### Prerequisites
 
 - Test GitHub repository with admin access
-- Personal Access Token with required permissions
+- GitHub App installed with required permissions (see [Setup Guide](SETUP_GUIDE.md))
 - Merge queue repository set up and tagged
 
 ### Test Scenarios

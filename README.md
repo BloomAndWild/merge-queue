@@ -54,21 +54,12 @@ Queue state is tracked entirely through GitHub labels — the `queued-for-merge`
 
 To add the merge queue to your repository:
 
-### 1. Set Up Authentication
+### 1. Create a GitHub App
 
-The merge queue needs a GitHub token with write access. Choose one of:
-
-**Option A: GitHub App (Recommended)** — no token rotation, not tied to a user
-account, better audit trail. Create a GitHub App with the permissions below,
-install it on your repositories, then store the App ID as a repository variable
-(`MERGE_QUEUE_APP_ID`) and the private key as a secret
+The merge queue authenticates via a GitHub App. Create one with these
+permissions, install it on your target repositories, then store the App ID as a
+repository variable (`MERGE_QUEUE_APP_ID`) and the private key as a secret
 (`MERGE_QUEUE_APP_PRIVATE_KEY`).
-
-**Option B: Personal Access Token** — create a dedicated bot account with
-**write** (not admin) access and a fine-grained PAT. Store it as a repository
-secret (`MERGE_QUEUE_TOKEN`).
-
-Both methods require the same repository permissions:
 
 | Permission | Access |
 |---|---|
@@ -80,7 +71,7 @@ Both methods require the same repository permissions:
 | Metadata | Read |
 
 See the [Setup Guide](docs/SETUP_GUIDE.md) for detailed step-by-step
-instructions for both options.
+instructions.
 
 ### 2. Add Workflow Files
 
@@ -90,10 +81,7 @@ Copy these three workflow files to your repository's `.github/workflows/` direct
 - `merge-queue-manager.yml` - Triggered after entry/remove workflows + self-dispatch
 - `merge-queue-remove.yml` - Triggered when label is removed or PR is closed
 
-Use the examples that match your authentication method:
-
-- **GitHub App** → [examples/target-repo-workflows-github-app/](examples/target-repo-workflows-github-app/)
-- **PAT** → [examples/target-repo-workflows/](examples/target-repo-workflows/)
+See [examples/target-repo-workflows-github-app/](examples/target-repo-workflows-github-app/) for templates.
 
 ### 3. Add the Trigger Label
 
@@ -111,7 +99,7 @@ Configure the queue behavior via workflow inputs:
 
 ```yaml
 with:
-  github-token: ${{ steps.app-token.outputs.token }}  # or ${{ secrets.MERGE_QUEUE_TOKEN }} for PAT
+  github-token: ${{ steps.app-token.outputs.token }}
   queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}  # Trigger label (configurable via repo variable)
   merge-method: 'squash'              # merge, squash, or rebase
   auto-update-branch: true            # Auto-merge master when behind
@@ -225,9 +213,9 @@ Standard labels used by the queue:
 
 ## Security
 
-- Never commit tokens or secrets
-- **GitHub App (preferred)**: tokens are short-lived (1 hour), auto-generated per workflow run, and scoped to specific repositories
-- **PAT**: use a dedicated bot account with **write** (not admin) access — non-admin tokens cannot bypass branch protection. Use a fine-grained PAT with minimal required permissions, scoped to specific repositories
+- Never commit tokens, private keys, or secrets to git
+- Authentication uses a **GitHub App** — installation tokens are short-lived (1 hour), auto-generated per workflow run, and scoped to specific repositories
+- Install the App only on repositories that need the merge queue
 - The merge queue always validates approvals at the application level (at least one approval, no outstanding changes requested)
 - Validate all inputs from GitHub events
 
