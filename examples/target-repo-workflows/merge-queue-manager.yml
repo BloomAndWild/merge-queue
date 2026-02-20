@@ -48,7 +48,8 @@ jobs:
           # Validation requirements
           allow-draft: false
           block-labels: do-not-merge,wip
-          ignore-checks: 'Add PR to Merge Queue,Remove PR from Merge Queue,Process Merge Queue'
+          # Add the name of any checks that should be ignored (ie ones that can be allowed to fail)
+          ignore-checks: ''
 
           # Branch update configuration
           auto-update-branch: true
