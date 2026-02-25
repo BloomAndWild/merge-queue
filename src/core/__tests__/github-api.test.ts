@@ -206,6 +206,117 @@ describe('GitHubAPI', () => {
 
       await expect(api.getCommitStatus('sha1')).rejects.toThrow('Failed to fetch commit status');
     });
+
+    it('should deduplicate check runs by name, keeping the latest (highest id)', async () => {
+      mockChecksListForRef.mockResolvedValue({
+        data: {
+          check_runs: [
+            { id: 100, name: 'UnitTests (1)', conclusion: 'success', status: 'completed' },
+            { id: 101, name: 'UnitTests (2)', conclusion: 'failure', status: 'completed' },
+            { id: 200, name: 'UnitTests (1)', conclusion: 'failure', status: 'completed' },
+            { id: 201, name: 'UnitTests (2)', conclusion: 'success', status: 'completed' },
+          ],
+        },
+      });
+      mockGetCombinedStatusForRef.mockResolvedValue({
+        data: { statuses: [] },
+      });
+
+      const result = await api.getCommitStatus('sha1');
+
+      expect(result).toEqual([
+        { name: 'UnitTests (1)', status: 'failure', conclusion: 'failure' },
+        { name: 'UnitTests (2)', status: 'success', conclusion: 'success' },
+      ]);
+    });
+
+    it('should keep in-progress re-run over stale failure', async () => {
+      mockChecksListForRef.mockResolvedValue({
+        data: {
+          check_runs: [
+            { id: 100, name: 'UnitTests (3)', conclusion: 'failure', status: 'completed' },
+            { id: 200, name: 'UnitTests (3)', conclusion: null, status: 'in_progress' },
+          ],
+        },
+      });
+      mockGetCombinedStatusForRef.mockResolvedValue({
+        data: { statuses: [] },
+      });
+
+      const result = await api.getCommitStatus('sha1');
+
+      expect(result).toEqual([{ name: 'UnitTests (3)', status: 'pending', conclusion: undefined }]);
+    });
+
+    it('should keep latest failure over stale success', async () => {
+      mockChecksListForRef.mockResolvedValue({
+        data: {
+          check_runs: [
+            { id: 50, name: 'build', conclusion: 'success', status: 'completed' },
+            { id: 150, name: 'build', conclusion: 'failure', status: 'completed' },
+          ],
+        },
+      });
+      mockGetCombinedStatusForRef.mockResolvedValue({
+        data: { statuses: [] },
+      });
+
+      const result = await api.getCommitStatus('sha1');
+
+      expect(result).toEqual([{ name: 'build', status: 'failure', conclusion: 'failure' }]);
+    });
+
+    it('should handle a full matrix re-run with mixed old and new check runs', async () => {
+      mockChecksListForRef.mockResolvedValue({
+        data: {
+          check_runs: [
+            // Attempt 1 results
+            { id: 100, name: 'UnitTests (1)', conclusion: 'success', status: 'completed' },
+            { id: 101, name: 'UnitTests (2)', conclusion: 'success', status: 'completed' },
+            { id: 102, name: 'UnitTests (3)', conclusion: 'failure', status: 'completed' },
+            { id: 103, name: 'UnitTestsCombined', conclusion: 'cancelled', status: 'completed' },
+            // Attempt 2 results (re-run)
+            { id: 200, name: 'UnitTests (1)', conclusion: null, status: 'in_progress' },
+            { id: 201, name: 'UnitTests (2)', conclusion: null, status: 'in_progress' },
+            { id: 202, name: 'UnitTests (3)', conclusion: null, status: 'in_progress' },
+            { id: 203, name: 'UnitTestsCombined', conclusion: null, status: 'queued' },
+          ],
+        },
+      });
+      mockGetCombinedStatusForRef.mockResolvedValue({
+        data: { statuses: [] },
+      });
+
+      const result = await api.getCommitStatus('sha1');
+
+      expect(result).toHaveLength(4);
+      expect(result).toEqual([
+        { name: 'UnitTests (1)', status: 'pending', conclusion: undefined },
+        { name: 'UnitTests (2)', status: 'pending', conclusion: undefined },
+        { name: 'UnitTests (3)', status: 'pending', conclusion: undefined },
+        { name: 'UnitTestsCombined', status: 'pending', conclusion: undefined },
+      ]);
+    });
+
+    it('should not deduplicate across check runs and commit statuses', async () => {
+      mockChecksListForRef.mockResolvedValue({
+        data: {
+          check_runs: [{ id: 1, name: 'ci/build', conclusion: 'success', status: 'completed' }],
+        },
+      });
+      mockGetCombinedStatusForRef.mockResolvedValue({
+        data: {
+          statuses: [{ context: 'ci/build', state: 'failure' }],
+        },
+      });
+
+      const result = await api.getCommitStatus('sha1');
+
+      expect(result).toEqual([
+        { name: 'ci/build', status: 'success', conclusion: 'success' },
+        { name: 'ci/build', status: 'failure', conclusion: 'failure' },
+      ]);
+    });
   });
 
   describe('mergePullRequest', () => {
