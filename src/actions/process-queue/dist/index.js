@@ -32163,9 +32163,17 @@ class GitHubAPI {
                 repo: this.repo.repo,
                 ref,
             });
-            // Combine check runs and statuses with proper status mapping
+            // When workflows are re-run, multiple check runs exist for the same name.
+            // Keep only the latest (highest id) per name to avoid stale failures blocking the queue.
+            const latestByName = new Map();
+            for (const check of checkRuns.check_runs) {
+                const existing = latestByName.get(check.name);
+                if (!existing || check.id > existing.id) {
+                    latestByName.set(check.name, check);
+                }
+            }
             const checkStatuses = [
-                ...checkRuns.check_runs.map(check => ({
+                ...[...latestByName.values()].map(check => ({
                     name: check.name,
                     status: mapCheckRunStatus(check.conclusion, check.status),
                     conclusion: check.conclusion || undefined,
