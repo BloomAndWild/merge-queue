@@ -55,7 +55,7 @@ jobs:
         with:
           app-id: ${{ vars.MERGE_QUEUE_APP_ID }}
           private-key: ${{ secrets.MERGE_QUEUE_APP_PRIVATE_KEY }}
-      - uses: BloomAndWild/merge-queue@v1/src/actions/add-to-queue
+      - uses: BloomAndWild/merge-queue/src/actions/add-to-queue@v1
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}
@@ -85,7 +85,7 @@ jobs:
           app-id: ${{ vars.MERGE_QUEUE_APP_ID }}
           private-key: ${{ secrets.MERGE_QUEUE_APP_PRIVATE_KEY }}
       - id: process
-        uses: BloomAndWild/merge-queue@v1/src/actions/process-queue
+        uses: BloomAndWild/merge-queue/src/actions/process-queue@v1
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           queue-label: ${{ vars.MERGE_QUEUE_LABEL || 'ready' }}
@@ -116,7 +116,7 @@ jobs:
         with:
           app-id: ${{ vars.MERGE_QUEUE_APP_ID }}
           private-key: ${{ secrets.MERGE_QUEUE_APP_PRIVATE_KEY }}
-      - uses: BloomAndWild/merge-queue@v1/src/actions/remove-from-queue
+      - uses: BloomAndWild/merge-queue/src/actions/remove-from-queue@v1
         with:
           github-token: ${{ steps.app-token.outputs.token }}
 ```
@@ -252,7 +252,7 @@ Add this step to your `merge-queue-manager.yml` **after** the process step and *
 ```yaml
 - name: Notify Slack
   if: steps.process.outputs.processed == 'true'
-  uses: BloomAndWild/merge-queue@v1/src/actions/notify
+  uses: BloomAndWild/merge-queue/src/actions/notify@v1
   with:
     slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
     github-token: ${{ steps.app-token.outputs.token }}

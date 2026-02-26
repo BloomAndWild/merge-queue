@@ -137,10 +137,10 @@ Copy the example workflows from `examples/target-repo-workflows/`.
 
    ```yaml
    # Before
-   uses: BloomAndWild/merge-queue@v1/src/actions/add-to-queue
+   uses: BloomAndWild/merge-queue/src/actions/add-to-queue@v1
 
    # After
-   uses: mycompany/merge-queue@v1/src/actions/add-to-queue
+   uses: mycompany/merge-queue/src/actions/add-to-queue@v1
    ```
 
 4. Customize configuration (optional):
@@ -268,6 +268,23 @@ with:
 
 ## Troubleshooting
 
+### Issue: "Unable to resolve action" error
+
+**Cause**: Incorrect action reference syntax or private repo access not enabled
+
+**Solution**:
+1. Ensure the path comes **before** `@ref` in action references:
+   ```yaml
+   # Correct
+   uses: BloomAndWild/merge-queue/src/actions/add-to-queue@v1
+
+   # Wrong — GitHub treats everything after @ as the version
+   uses: BloomAndWild/merge-queue@v1/src/actions/add-to-queue
+   ```
+2. If the merge-queue repository is **private**, enable access from other repos in the
+   same organisation: go to the merge-queue repo → Settings → Actions → General →
+   "Access" section → select "Accessible from repositories in the organisation"
+
 ### Issue: Workflows don't run
 
 **Cause**: App permissions or workflow file errors
@@ -352,10 +369,10 @@ When new version is released:
 3. Update workflow files in target repos:
    ```yaml
    # Change from
-   uses: BloomAndWild/merge-queue@v1.0.0/src/actions/add-to-queue
+   uses: BloomAndWild/merge-queue/src/actions/add-to-queue@v1.0.0
 
    # To
-   uses: BloomAndWild/merge-queue@v1.1.0/src/actions/add-to-queue
+   uses: BloomAndWild/merge-queue/src/actions/add-to-queue@v1.1.0
    ```
 
 ## Best Practices

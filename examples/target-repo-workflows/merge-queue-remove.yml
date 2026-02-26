@@ -25,7 +25,7 @@ jobs:
           private-key: ${{ secrets.MERGE_QUEUE_APP_PRIVATE_KEY }}
 
       - name: Remove from merge queue
-        uses: BloomAndWild/merge-queue@v1/src/actions/remove-from-queue
+        uses: BloomAndWild/merge-queue/src/actions/remove-from-queue@v1
         with:
           # Authentication (GitHub App installation token)
           github-token: ${{ steps.app-token.outputs.token }}

@@ -151,5 +151,5 @@ wip: work in progress                        # Incomplete, breaks atomic rule
 ## Notes
 
 - This is a reusable utility - changes here affect all consuming repositories
-- Target repos reference actions like: `uses: org/merge-queue@v1/src/actions/add-to-queue`
+- Target repos reference actions like: `uses: org/merge-queue/src/actions/add-to-queue@v1`
 - Each consuming repo needs a PAT stored as `MERGE_QUEUE_TOKEN` secret

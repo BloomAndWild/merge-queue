@@ -317,7 +317,7 @@ if (result === 'merged') {
 2. Tag new release (v1.1.0)
 3. Update action references in target repos:
    ```yaml
-   uses: org/merge-queue@v1.1.0/src/actions/add-to-queue
+   uses: org/merge-queue/src/actions/add-to-queue@v1.1.0
    ```
 
 ## Monitoring

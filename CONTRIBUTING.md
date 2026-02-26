@@ -181,7 +181,7 @@ act -j add-to-queue
 1. Push changes to a test repository
 2. Reference your branch in workflow files:
    ```yaml
-   uses: BloomAndWild/merge-queue@your-branch/src/actions/add-to-queue
+   uses: BloomAndWild/merge-queue/src/actions/add-to-queue@your-branch
    ```
 3. Test with real PRs
 

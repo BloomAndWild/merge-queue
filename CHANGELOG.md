@@ -70,7 +70,7 @@ When upgrading between versions:
 1. Check CHANGELOG for breaking changes
 2. Update action references in target repositories:
    ```yaml
-   uses: BloomAndWild/merge-queue@vX.Y.Z/src/actions/add-to-queue
+   uses: BloomAndWild/merge-queue/src/actions/add-to-queue@vX.Y.Z
    ```
 3. Review and update workflow configurations if needed
 4. Test with a non-critical PR first

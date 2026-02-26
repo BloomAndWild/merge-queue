@@ -22,7 +22,7 @@ jobs:
 
       - name: Add to merge queue
         id: add
-        uses: BloomAndWild/merge-queue@v1/src/actions/add-to-queue
+        uses: BloomAndWild/merge-queue/src/actions/add-to-queue@v1
         with:
           # Authentication (GitHub App installation token)
           github-token: ${{ steps.app-token.outputs.token }}
@@ -58,7 +58,7 @@ jobs:
       # Requires a MERGE_QUEUE_SLACK_WEBHOOK_URL secret containing an incoming webhook URL.
       - name: Notify Slack on failure
         if: always() && steps.add.outputs.valid == 'false'
-        uses: BloomAndWild/merge-queue@v1/src/actions/notify
+        uses: BloomAndWild/merge-queue/src/actions/notify@v1
         with:
           slack-webhook-url: ${{ secrets.MERGE_QUEUE_SLACK_WEBHOOK_URL }}
           github-token: ${{ steps.app-token.outputs.token }}
